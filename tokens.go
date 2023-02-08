@@ -1,13 +1,20 @@
 package main
 
+type Token struct {
+	T       TokenType
+	Lexeme  string
+	Literal interface{}
+	Line    int
+	Column  int
+}
+
 // Map all tokens from the specification
 // https://262.ecma-international.org/#sec-tokens
 // Tokens
-
-type Token int
+type TokenType int
 
 const (
-	TIdentifier Token = iota
+	TIdentifier TokenType = iota
 
 	// Literals
 	TNumericLiteral
@@ -109,9 +116,10 @@ const (
 	TArrow
 	TSlash
 	TSlashAssign
+	TEOF
 )
 
-var TokenMap = map[Token]string{
+var TokenMap = map[TokenType]string{
 	TTrue:                     "true",
 	TFalse:                    "false",
 	TLeftBrace:                "{",
@@ -204,4 +212,5 @@ var TokenMap = map[Token]string{
 	TWhile:                    "while",
 	TWith:                     "with",
 	TYield:                    "yield",
+	TEOF:                      "TEOF",
 }
