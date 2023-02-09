@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -115,130 +116,137 @@ func TestScanDoublePunctuators(t *testing.T) {
 
 }
 
-func TestScanDigits(t *testing.T) {
-	t.Run("decimal literal: single digits", func(t *testing.T) {
-		src := `0 1 2 3 4 5 6 7 8 9`
+func TestScanDigits_DecimalLiterals(t *testing.T) {
+	// TODO: Add failing tests:
+	// Leading 0s, >1 punctuator, mixing punctuators, etc.
+	// Err: errUnexpectedToken
+	t.Run("1P: DecimalIntegerLiteral . DecimalDigits? ExponentialPart?", func(t *testing.T) {
+		// DecimalIntegerLiteral ::
+		// | 0
+		// | NonZeroDigit DecimalDigits?
+		// | NonZeroDigit NumericLiteralSeparator? DecimalDigits
+		// | NonOctalDecimalIntegerLiteral ((tested below))
+		//
+		// ExponentialPart ::
+		// | e SignedInteger
+		// | E SignedInteger
+		//
+		// SignedInteger ::
+		// | + DecimalDigits
+		// | - DecimalDigits
+		//
+		// DecimalDigits[Sep] ::
+		// | DecimalDigit
+		// | DecimalDigits DecimalDigit
+		// | DecimalDigits NumericLiteralSeparator DecimalDigit
+		//
+		// DecimalDigit :: one of 0 1 2 3 4 5 6 7 8 9
+		// NonZeroDigit :: one of 1 2 3 4 5 6 7 8 9
+		src := `0 10.33340 0.000000001 3939.333393 9999.11100 10_000_000 10_0.30_0 9.30_0E30_034 0e20 0.e25 1.e+50 0.3e+50 0e00001 0.E-50`
 		expected := []Token{
 			{T: TNumericLiteral, Lexeme: "0", Literal: "0", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "1", Literal: "1", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "2", Literal: "2", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "3", Literal: "3", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "4", Literal: "4", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "5", Literal: "5", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "6", Literal: "6", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "7", Literal: "7", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "8", Literal: "8", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "9", Literal: "9", Line: 0, Column: 0},
-		}
-
-		scanner := NewScanner(src)
-		got := scanner.Scan()
-		assertLexemes(t, got, expected)
-	})
-
-	t.Run("decimal literal: N digits", func(t *testing.T) {
-		src := `01345 10 12345678901 100000000000000000000000000000000001`
-		expected := []Token{
-			{T: TNumericLiteral, Lexeme: "01345", Literal: "01345", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "10", Literal: "10", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "12345678901", Literal: "12345678901", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "100000000000000000000000000000000001", Literal: "100000000000000000000000000000000001", Line: 0, Column: 0},
-		}
-
-		scanner := NewScanner(src)
-		got := scanner.Scan()
-		assertLexemes(t, got, expected)
-	})
-
-	// TODO:
-	// TODO: Error handling: make sure we don't parse 000111 numbers as valid
-	// Err: errInvalidNumber
-
-	t.Run("decimal digit simple: without leading period", func(t *testing.T) {
-		src := `10.33340 0.000000001 3939.333393 9999.11100`
-		expected := []Token{
 			{T: TNumericLiteral, Lexeme: "10.33340", Literal: "10.33340", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0.000000001", Literal: "0.000000001", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "3939.333393", Literal: "3939.333393", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "9999.11100", Literal: "9999.11100", Line: 0, Column: 0},
-		}
-
-		scanner := NewScanner(src)
-		got := scanner.Scan()
-		assertLexemes(t, got, expected)
-	})
-
-	// TODO: Error handling: make sure that we only accept one period while parsing the number
-	// e.g 10.00.000.00 as valid numbers
-	// Err: errUnexpectedToken
-
-	t.Run("decimal digit complex: with leading period", func(t *testing.T) {
-		src := `.0000001 .00000000000000`
-		expected := []Token{
-			{T: TNumericLiteral, Lexeme: ".0000001", Literal: ".0000001", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: ".00000000000000", Literal: ".00000000000000", Line: 0, Column: 0},
-		}
-
-		scanner := NewScanner(src)
-		got := scanner.Scan()
-		assertLexemes(t, got, expected)
-	})
-
-	// TODO: Error handling: make sure that we only accept one period while parsing the number
-	// e.g:
-	// ....1
-	// .00.
-	// .0.0.
-	// Err: errUnexpectedToken
-
-	t.Run("decimal digit complex: with exp and digits and signs", func(t *testing.T) {
-		src := `0e20 .3e25 0.e25 1.e+50 0.3e+50 .1e-50 0e00001 .0e00001 .5E+50 0.E-50`
-		expected := []Token{
+			{T: TNumericLiteral, Lexeme: "10_000_000", Literal: "10_000_000", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "10_0.30_0", Literal: "10_0.30_0", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "9.30_0E30_034", Literal: "9.30_0E30_034", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0e20", Literal: "0e20", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: ".3e25", Literal: ".3e25", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0.e25", Literal: "0.e25", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "1.e+50", Literal: "1.e+50", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0.3e+50", Literal: "0.3e+50", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: ".1e-50", Literal: ".1e-50", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0e00001", Literal: "0e00001", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: ".0e00001", Literal: ".0e00001", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: ".5E+50", Literal: ".5E+50", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "0.E-50", Literal: "0.E-50", Line: 0, Column: 0},
 		}
 
 		scanner := NewScanner(src)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
-	})
-	// TODO: Error handling: make sure that we only accept one period while parsing the number
-	// e.g:
-	// e20
-	// 01e20
-	// 0e20e
-	// 0e.20
-	// 0e20.
-	// .e03
-	// .0e20.
-	// 0e20++3
-	// 0e20--3
-	// 0e20+-4
-	// 0e20+4.
-	// 0e20+.4
-	// Err: errUnexpectedToken
 
-	t.Run("hexadecimal digit", func(t *testing.T) {
-		src := `0x1 0xA 0x1234567890abcdef 0X1234567890ABCDEF`
-		expected := []Token{
-			{T: TNumericLiteral, Lexeme: "0x1", Literal: "0x1", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "0xA", Literal: "0xA", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "0x1234567890abcdef", Literal: "0x1234567890abcdef", Line: 0, Column: 0},
-			{T: TNumericLiteral, Lexeme: "0X1234567890ABCDEF", Literal: "0X1234567890ABCDEF", Line: 0, Column: 0},
+		// NonOctalDecimalIntegerLiteral ::
+		// | 0 NonOctalDigit
+		// | LegacyOctalLikeDecimalIntegerLiteral  NonOctalDigit
+		// | NonOctalDecimalIntegerLiteral DecimalDigit
+		//
+		// LegacyOctalLikeDecimalIntegerLiteral ::
+		// | 0 OctalDigit
+		// | LegacyOctalLikeDecimalIntegerLiteral OctalDigit
+		//
+		// NonOctalDigit :: one of 8 9
+		// OctalDigit :: one of 0 1 2 3 4 5 6 7
+		//
+		// (We could simplify the production in one form)
+		// NonOctalDecimalIntegerLiteral ::
+		// | 0 DecimalDigit
+		// | NonOctalDecimalIntegerLiteral DecimalDigit
+		//
+		// FYI: These are not valid in strict mode, though we need to be overly permissive
+		src = `0000008989 01234567 0777`
+		expected = []Token{
+			{T: TNumericLiteral, Lexeme: "0000008989", Literal: "0000008989", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "01234567", Literal: "01234567", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "0777", Literal: "0777", Line: 0, Column: 0},
 		}
 
+	})
+
+	t.Run("2P: . DecimalDigits ExponentialPart?", func(t *testing.T) {
+		src := `.33340 0.0000_0000_1 .3_0E0_034 .1e+2_0 .3e-2_5 .0000e25 .1e-50 .5E+50 .9E-50`
+		expected := []Token{
+			{T: TNumericLiteral, Lexeme: ".33340", Literal: ".33340", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "0.0000_0000_1", Literal: "0.0000_0000_1", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".3_0E0_034", Literal: ".3_0E0_034", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".1e+2_0", Literal: ".1e+2_0", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".3e-2_5", Literal: ".3e-2_5", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".0000e25", Literal: ".0000e25", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".1e-50", Literal: ".1e-50", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".5E+50", Literal: ".5E+50", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: ".9E-50", Literal: ".9E-50", Line: 0, Column: 0},
+		}
 		scanner := NewScanner(src)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
+
+	t.Run("3P: DecimalIntegerLiteral ExponentialPart", func(t *testing.T) {
+		// DecimalIntegerLiteral ::
+		// | 0
+		// | NonZeroDigit
+		// | NonZeroDigit NumericLiteralSeparator? DecimalDigits
+		// | NonOctalDecimalIntegerLiteral
+		//
+		src := `0_E25 1_35E-50_0 00000E-50_00000 000000e000000 007654321e+1 000e+1`
+		expected := []Token{
+			{T: TNumericLiteral, Lexeme: "0_E25", Literal: "0_E25", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "1_35E-50_0", Literal: "1_35E-50_0", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "00000E-50_00000", Literal: "00000E-50_00000", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "000000e000000", Literal: "000000e000000", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "007654321e+1", Literal: "007654321e+1", Line: 0, Column: 0},
+			{T: TNumericLiteral, Lexeme: "000e+1", Literal: "000e+1", Line: 0, Column: 0},
+		}
+		scanner := NewScanner(src)
+		got := scanner.Scan()
+		assertLexemes(t, got, expected)
+	})
+}
+
+func TestScanDigits_HexIntegerLiteral(t *testing.T) {
+	// HexIntegerLiteral ::
+	// | 0x HexDigits
+	// | 0X HexDigits
+	src := `0x1 0xA 0x1234567890abcdef 0X1234567890ABCDEF 0xB_AAB_445`
+	expected := []Token{
+		{T: TNumericLiteral, Lexeme: "0x1", Literal: "0x1", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0xA", Literal: "0xA", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0x1234567890abcdef", Literal: "0x1234567890abcdef", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0X1234567890ABCDEF", Literal: "0X1234567890ABCDEF", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0xB_AAB_445", Literal: "0xB_AAB_445", Line: 0, Column: 0},
+	}
+
+	scanner := NewScanner(src)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
 
 	// TODO: Error handling: make sure that we only accept one period while parsing the number
 	// e.g:
@@ -250,6 +258,81 @@ func TestScanDigits(t *testing.T) {
 	// 0X+3
 	// 0X-3
 	// 0Xe3
+}
+
+func TestScanDigits_DecimalBigIntegerLiteral(t *testing.T) {
+	// DecimalBigIntegerLiteral ::
+	// | 0 BigIntLiteralSuffix
+	// | NonZeroDigit DecimalDigits? BigIntLiteralSuffix
+	// | NonZeroDigit NumericLiteralSeparator DecimalDigits BigIntLiteralSuffix
+	//
+	// BigIntLiteralSuffix :: n
+	src := `0n 8n 84981283n 1_923_921_839_1273n`
+	expected := []Token{
+		{T: TNumericLiteral, Lexeme: "0n", Literal: "0n", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "8n", Literal: "8n", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "84981283n", Literal: "84981283n", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "1_923_921_839_1273n", Literal: "1_923_921_839_1273n", Line: 0, Column: 0},
+	}
+
+	scanner := NewScanner(src)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
+}
+
+func TestScanDigits_BinaryIntegerLiteral(t *testing.T) {
+	// BinaryIntegerLiteral ::
+	// | 0b BinaryDigits
+	// | 0B BinaryDigits
+	//
+	// BinaryDigits ::
+	// | BinaryDigit BinaryDigits
+	// | BinaryDigits NumericLiteralSeparator BinaryDigit
+	//
+	// BinaryDigit :: one of 0 1
+	//
+	src := `0b0 0b1 0B0 0B1 0B0101010 0b101010 0b1010_0101_0110 0b0100_0101_0110`
+	expected := []Token{
+		{T: TNumericLiteral, Lexeme: "0b0", Literal: "0b0", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0b1", Literal: "0b1", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0B0", Literal: "0B0", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0B1", Literal: "0B1", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0B0101010", Literal: "0B0101010", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0b101010", Literal: "0b101010", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0b1010_0101_0110", Literal: "0b1010_0101_0110", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0b0100_0101_0110", Literal: "0b0100_0101_0110", Line: 0, Column: 0},
+	}
+
+	scanner := NewScanner(src)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
+}
+
+func TestScanDigits_OctalIntegerLiteral(t *testing.T) {
+	// OctalIntegerLiteral ::
+	// | 0o OctalDigits
+	// | 0O OctalDigits
+	//
+	// OctalDigits ::
+	// | OctalDigit
+	// | OctalDigits OctalDigit
+	// | OctalDigits NumericLiteralSeparator OctalDigit
+	//
+	// OctalDigit :: one of 0 1 2 3 4 5 6 7
+	src := `0o0 0o1 0O0 0O7 0O6 0O2112_2234_6670 0o1234_5672_5012`
+	expected := []Token{
+		{T: TNumericLiteral, Lexeme: "0o0", Literal: "0o0", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0o1", Literal: "0o1", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0O0", Literal: "0O0", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0O7", Literal: "0O7", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0O6", Literal: "0O6", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0O2112_2234_6670", Literal: "0O2112_2234_6670", Line: 0, Column: 0},
+		{T: TNumericLiteral, Lexeme: "0o1234_5672_5012", Literal: "0o1234_5672_5012", Line: 0, Column: 0},
+	}
+
+	scanner := NewScanner(src)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
 }
 
 // /////////////
@@ -286,6 +369,7 @@ func assertLexemes(t *testing.T, got, expected []Token) {
 }
 
 func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a, b Token) bool, callbackPrint func(a Token) string) {
+	t.Helper()
 	// Need to be in the same order
 	failure := false
 	if len(got) != len(expected) {
@@ -300,12 +384,12 @@ func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a
 		}
 		if !callbackEqualCmp(expectedToken, gotToken) {
 			failure = true
-			t.Errorf("(%d)\tgot:`%v`  expected:`%v`", i, callbackPrint(gotToken), callbackPrint(expected[i]))
+			t.Errorf("(index %d)\tgot:`%v`  expected:`%v`", i, callbackPrint(gotToken), callbackPrint(expected[i]))
 		}
 	}
 
 	if failure {
-		strGot, strExpect := ``, ``
+		strGot, strExpect := strings.Builder{}, strings.Builder{}
 		for i, expectedToken := range expected {
 			var gotToken Token
 			if i >= len(got) {
@@ -313,11 +397,12 @@ func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a
 			} else {
 				gotToken = got[i]
 			}
-			strGot += callbackPrint(gotToken) + ``
-			strExpect += callbackPrint(expectedToken) + ``
+			strGot.Write([]byte(callbackPrint(gotToken)))
+			strExpect.Write([]byte(callbackPrint(expectedToken)))
 		}
 
-		t.Errorf("got:`%v`  expected:`%v`", strGot, strExpect)
+		t.Errorf("got:\t\t`%v`", strGot.String())
+		t.Errorf("expected:\t`%v`", strExpect.String())
 		t.Fail()
 	}
 }

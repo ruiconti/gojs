@@ -3,23 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 )
-
-func isPunctuation(r rune) bool {
-	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '~' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == ' '
-}
-
-func isDecimalDigit(r rune) bool {
-	return r >= '0' && r <= '9'
-}
-
-func isValidDecDigitIntermediate(r rune) bool {
-	return isDecimalDigit(r) || r == '_' || r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-'
-}
-
-func isHexDigit(r rune) bool {
-	return isDecimalDigit(r) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
-}
 
 var errEOF = fmt.Errorf("EOF")
 
@@ -115,16 +100,19 @@ func (s *Scanner) seekMatchSequence(sequence []rune) bool {
 		i++
 		j++
 	}
-	// we got here, everything is the same :)
-	// runesstr := ``
-	// for _, r := range candidates {
-	// 	runesstr += fmt.Sprintf("%c", r)
-	// }
 	// log.Printf("%d: matchSequence true! %v", headIdx, runesstr)
 	s.advanceBy(len(sequence))
 	// log.Printf("(i:%d;j:%d) head: %c seekSeq (advanced %d)", i, j, rune(s.peek()), len(sequence))
 	return true
 
+}
+
+// Helpers that help decide which handler branch we should take
+func isDecimalDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+func isPunctuation(r rune) bool {
+	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '~' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == ' '
 }
 
 func (s *Scanner) Scan() []Token {
@@ -141,75 +129,105 @@ func (s *Scanner) Scan() []Token {
 		log.Printf("%d: (%c) next iter..", s.idxHead, s.peek())
 		s.advance()
 	}
+
+	tokens := strings.Builder{}
+	for _, t := range s.tokens {
+		var lit string
+		if t.Literal != nil {
+			lit = fmt.Sprintf("%s", t.Literal)
+		} else {
+			lit = fmt.Sprintf("%s", t.Lexeme)
+		}
+		tokens.Write([]byte(lit))
+	}
+
 	return s.tokens
 }
 
-// Numeric literals are defined exclusively by the _following_ production:
-// "NumericLiteral":
-// | DecimalLiteral
-// | HexIntegerLiteral
-//
-// "DecimalLiteral":
-// | DecimalIntegerLiteral . DecimalDigits? ExponentPart?
-// | . DecimalDigits ExponentPart?
-// | DecimalIntegerLiteral ExponentPart?
-//
-// "DecimalDigits":
-// | DecimalDigit
-// | DecimalDigits DecimalDigit
-//
-// "DecimalIntegerLiteral"
-// | 0
-// | NonZeroDigit DecimalDigit?
-//
-// "DecimalDigit": 0 1 2 3 4 5 6 7 8 9
-// "NonZeroDigit": 1 2 3 4 5 6 7 8 9
-//
-// "SignedInteger":
-// | + DecimalDigit
-// | - DecimalDigit
-//
-// "HexIntegerLiteral":
-// | 0x HexDigit
-// | 0X HexDigit
-// | HexIntegerLiteral HexDigit
-//
-// "HexDigit": 0 1 2 3 4 5 6 7 8 9 a b c d e f A B C D E F
-// "ExponentPart": ExponentIndicator SignedInteger
-// "ExponentIndicator": e E
-type NumberType string
+// String literals:
+// https://262.ecma-international.org/#sec-literals-string-literals
+
+// Numeric literals:
+// https://262.ecma-international.org/#sec-literals-numeric-literals
+type NumericLiteralType string
 
 const (
-	NumberTypeDecimal NumberType = "decimal"
-	NumberTypeHex     NumberType = "hex"
+	// TODO: LegacyOctal and BigInt are being handled in "decimal"
+	LiteralDecimal NumericLiteralType = "decimal"
+	LiteralHex     NumericLiteralType = "hex"
+	LiteralBinary  NumericLiteralType = "binary"
+	LiteralOctal   NumericLiteralType = "octal"
 )
+
+// Dec
+func isLegalDecDigitIntermediate(r rune) bool {
+	return isDecimalDigit(r) || r == '_' || r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-'
+}
+
+// BigInt
+func isLegalBigIntDigitIntermediate(r rune) bool {
+	return isDecimalDigit(r) || r == 'n'
+}
+
+// Hex
+func isHexDigit(r rune) bool {
+	return isDecimalDigit(r) || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F')
+}
+
+func isLegalHexDigitIntermediate(r rune) bool {
+	return isHexDigit(r) || r == '_' || r == 'x' || r == 'X'
+}
+
+// Binary
+func isBinaryDigit(r rune) bool {
+	return r == '0' || r == '1'
+}
+
+func isLegalBinaryDigitIntermediate(r rune) bool {
+	return isBinaryDigit(r) || r == 'b' || r == 'B' || r == '_'
+}
+
+// Octal
+func isOctalDigit(r rune) bool {
+	return r >= '0' && r <= '7'
+}
+
+func isLegalOctalDigitIntermediate(r rune) bool {
+	return isOctalDigit(r) || r == '_' || r == 'o' || r == 'O'
+}
 
 func (s *Scanner) scanDigits() {
 	headNext, _ := s.peekAhead(1)
 
 	log.Printf("%d: (scanDigits:entry) head:%c headNext:%c", s.idxHead, s.peek(), headNext)
-	// first bytes will tell us what type of number, if any, we have to parse
-	var numberType NumberType
-	if s.peek() == '0' /* head is '0' */ &&
-		(headNext == 'x' || headNext == 'X' /* allowed next char */) {
-		numberType = NumberTypeHex
-	} else if isDecimalDigit(s.peek()) /* head is a digit OR */ ||
-		s.peek() == '.' && isDecimalDigit(headNext) /* head is '.' and headNext is a digit */ {
-		numberType = NumberTypeDecimal
+	// Derive if it's a valid numeric literal; if so, of which type
+	var numberType NumericLiteralType
+	if s.peek() == '0' {
+		if headNext == 'x' || headNext == 'X' {
+			numberType = LiteralHex
+		} else if headNext == 'b' || headNext == 'B' {
+			numberType = LiteralBinary
+		} else if headNext == 'o' || headNext == 'O' {
+			numberType = LiteralOctal
+		}
+	} else if isDecimalDigit(s.peek()) || (s.peek() == '.' && isDecimalDigit(headNext)) {
+		// it can be a dec literal
+		numberType = LiteralDecimal
 	} else {
+		log.Printf("scanDigits:Invalid number!")
 		// invalid number
 		return
 	}
 
 	digitLength := 1
 	switch numberType {
-	case NumberTypeDecimal:
-		for isValidDecDigitIntermediate(s.peek()) {
+	case LiteralDecimal:
+		for isLegalDecDigitIntermediate(s.peek()) || isLegalBigIntDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
 			log.Printf("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isDecimalDigit(headNext))
-			// if next digit is a valid intermediate representation, then we can store it:)
-			// this is overly naive and will allow tons of shit
-			if err == nil && isValidDecDigitIntermediate(headNext) {
+			// if next digit is a valid intermediate representation, then we can keep parsing
+			// WARNING: this is naively permissive and will allow tons of illegal combinations
+			if err == nil && (isLegalDecDigitIntermediate(headNext) || isLegalBigIntDigitIntermediate(headNext)) {
 				log.Printf("%d: (scanDecimalDigits) advancing decimal number...", s.idxHead)
 				s.advance()
 				digitLength++
@@ -217,14 +235,42 @@ func (s *Scanner) scanDigits() {
 				break
 			}
 		}
-	case NumberTypeHex:
-		for isHexDigit(s.peek()) || s.peek() == 'x' || s.peek() == 'X' {
+	case LiteralHex:
+		for isLegalHexDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
-			log.Printf("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isDecimalDigit(headNext))
-			// if next digit is a valid intermediate representation, then we can store it:)
-			// this is overly naive and will allow tons of shit
-			if err == nil && (isHexDigit(headNext) || headNext == 'x' || headNext == 'X') {
-				log.Printf("%d: (scanHexDigits) advancing decimal number...", s.idxHead)
+			log.Printf("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isHexDigit(headNext))
+			// if next digit is a valid intermediate representation, then we can keep parsing
+			// WARNING: this is naively permissive and will allow tons of illegal combinations
+			if err == nil && (isLegalHexDigitIntermediate(headNext)) {
+				log.Printf("%d: (scanHexDigits) advancing hex literal...", s.idxHead)
+				s.advance()
+				digitLength++
+			} else {
+				break
+			}
+		}
+	case LiteralBinary:
+		for isLegalBinaryDigitIntermediate(s.peek()) {
+			headNext, err := s.peekAhead(1)
+			log.Printf("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isBinaryDigit(headNext))
+			// if next digit is a valid intermediate representation, then we can keep parsing
+			// WARNING: this is naively permissive and will allow tons of illegal combinations
+			if err == nil && (isLegalBinaryDigitIntermediate(headNext)) {
+				log.Printf("%d: (scanBinaryDigits) advancing binary literal...", s.idxHead)
+				s.advance()
+				digitLength++
+			} else {
+				break
+			}
+		}
+	case LiteralOctal:
+		for isLegalOctalDigitIntermediate(s.peek()) {
+			headNext, err := s.peekAhead(1)
+			log.Printf("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isOctalDigit(headNext))
+			// if next digit is a valid intermediate representation, then we can keep parsing
+			// WARNING: this is naively permissive and will allow tons of illegal combinations
+			if err == nil && (isLegalOctalDigitIntermediate(headNext)) {
+				log.Printf("%d: (scanOctalDigit) advancing octal literal...", s.idxHead)
 				s.advance()
 				digitLength++
 			} else {
@@ -233,7 +279,7 @@ func (s *Scanner) scanDigits() {
 		}
 	}
 
-	// reached here: we found something that **is not** a digit
+	// reached here: we found something that **is not** part of a numeric literal
 	// so we can add the literal token
 
 	var literalUpperBound int

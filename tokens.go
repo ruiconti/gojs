@@ -20,6 +20,7 @@ const (
 	TNumericLiteral
 	TStringLiteral
 	TRegularExpressionLiteral
+	TTemplateLiteral
 
 	// Reserved words
 	TAwait
