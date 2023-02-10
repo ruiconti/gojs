@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -38,6 +39,18 @@ func (s *Scanner) advanceBy(n int) {
 
 func (s *Scanner) peek() rune {
 	return rune(s.src[s.idxHead])
+}
+
+func (s *Scanner) isEOF(idx int) bool {
+	return idx >= len(s.src)
+}
+
+func (s *Scanner) isPeekAheadEOF() bool {
+	return s.isEOF(s.idxHead + 1)
+}
+
+func (s *Scanner) peekBehind() rune {
+	return rune(s.src[s.idxHead-1])
 }
 
 func (s *Scanner) peekAhead(n int) (rune, error) {
@@ -107,19 +120,17 @@ func (s *Scanner) seekMatchSequence(sequence []rune) bool {
 
 }
 
-// Helpers that help decide which handler branch we should take
-func isDecimalDigit(r rune) bool {
-	return r >= '0' && r <= '9'
-}
-func isPunctuation(r rune) bool {
-	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '~' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == ' '
-}
-
 func (s *Scanner) Scan() []Token {
 	for s.idxHead < len(s.src) {
 		s.idxHeadStart = s.idxHead
 		head := s.peek()
 
+		if s.peek() == '"' {
+			s.scanStringLiteral()
+		}
+		if s.peek() == '`' {
+			s.scanTemplateLiteral()
+		}
 		if isDecimalDigit(head) || head == '.' {
 			s.scanDigits()
 		}
@@ -144,10 +155,73 @@ func (s *Scanner) Scan() []Token {
 	return s.tokens
 }
 
-// String literals:
-// https://262.ecma-international.org/#sec-literals-string-literals
+func isLegalStringLiteralIntermediate(r rune) bool {
+	return r != '"'
+}
 
-// Numeric literals:
+func (s *Scanner) isValidEscapeSequence(r rune) bool {
+	switch r {
+	case 'b', 'f', 'n', 'r', 't', 'v', '\\', '"', '\'', '0':
+		return true
+	}
+	return false
+}
+
+// String literals
+//
+// https://262.ecma-international.org/#sec-literals-string-literals
+func (s *Scanner) scanStringLiteral() {
+	// If we got here, it means that we spotted a double quote
+	if s.peek() != '"' {
+		return
+	}
+	log.Printf("%d: (scanStringLiteral) entry!", s.idxHead)
+
+	strLength := 1 // advance first quote
+	cursor := 0
+	invalidString := false
+	for {
+		headNext, err := s.peekAhead(1)
+		if s.idxHead > len(s.src)-1 /* if EOF */ ||
+			(s.peek() == '"' && cursor > 0 && s.peekBehind() != '\\') /* it's an end quote " */ ||
+			(s.peek() == '"' && cursor > 0 && s.peekBehind() == '\\' && headNext == ' ') {
+			// TODO: when dealing with escapes, we should probably be better off with unicode code points instead of comparing runes
+			break
+		}
+		log.Printf("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
+		strLength++
+		s.advance()
+		cursor++
+
+		if errors.Is(err, errEOF) {
+			break
+		}
+	}
+
+	if invalidString {
+		return
+	}
+
+	var upper, lower int
+	lower = s.idxHeadStart
+	upper = s.idxHeadStart + strLength + 1 // collect final quote
+	if upper > len(s.src)-1 {
+		upper = len(s.src) - 1
+	}
+
+	log.Printf("%d: (scanStringLiteral) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
+	s.addToken(TNumericLiteral, s.src[s.idxHeadStart:upper])
+}
+
+// Template literals
+//
+// https://262.ecma-international.org/#prod-TemplateLiteral
+func (s *Scanner) scanTemplateLiteral() {
+
+}
+
+// Numeric literals
+//
 // https://262.ecma-international.org/#sec-literals-numeric-literals
 type NumericLiteralType string
 
@@ -160,6 +234,10 @@ const (
 )
 
 // Dec
+func isDecimalDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
 func isLegalDecDigitIntermediate(r rune) bool {
 	return isDecimalDigit(r) || r == '_' || r == '.' || r == 'e' || r == 'E' || r == '+' || r == '-'
 }
@@ -209,6 +287,8 @@ func (s *Scanner) scanDigits() {
 			numberType = LiteralBinary
 		} else if headNext == 'o' || headNext == 'O' {
 			numberType = LiteralOctal
+		} else {
+			numberType = LiteralDecimal
 		}
 	} else if isDecimalDigit(s.peek()) || (s.peek() == '.' && isDecimalDigit(headNext)) {
 		// it can be a dec literal
@@ -292,9 +372,15 @@ func (s *Scanner) scanDigits() {
 	s.addToken(TNumericLiteral, s.src[s.idxHeadStart:literalUpperBound])
 }
 
+// Punctuators
+//
 // Scan for punctuators is straightforward:
 // we group tokens by their first character, and always try to match
 // the longest possible token, iteratively until we find a match.
+func isPunctuation(r rune) bool {
+	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '~' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == ' '
+}
+
 func (s *Scanner) scanPunctuators() {
 	switch s.peek() {
 	// Simple punctuators
