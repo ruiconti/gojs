@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -18,11 +17,17 @@ type Scanner struct {
 	idxHeadStart int
 	// token slice
 	tokens []Token
+	// reference to the logging mechanism
+	logger *SimpleLogger
 }
 
-func NewScanner(src string) *Scanner {
+func NewScanner(src string, logger *SimpleLogger) *Scanner {
+	if logger == nil {
+		logger = NewSimpleLogger(ModeDebug)
+	}
 	return &Scanner{
 		src:          src,
+		logger:       logger,
 		idxHead:      0,
 		idxHeadStart: 0,
 		tokens:       []Token{},
@@ -66,13 +71,14 @@ func (s *Scanner) addToken(t TokenType, literal interface{}) {
 	// for single matches e.g. `>`, we need to check it here so we don't overly complicate
 	// the scan() function
 	if s.idxHeadStart == s.idxHead {
-		log.Printf("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
+		s.logger.Debug("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
 		lexeme = string(s.peek())
 	} else {
 		lexeme = s.src[s.idxHeadStart : s.idxHead+1]
 	}
-	log.Printf("%d: addToken: %v %v", s.idxHead, t, lexeme)
+	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
 	s.tokens = append(s.tokens, Token{
+		T:       t,
 		Lexeme:  lexeme,
 		Literal: literal,
 		// TODO: implement positioning
@@ -104,18 +110,18 @@ func (s *Scanner) seekMatchSequence(sequence []rune) bool {
 		}
 		cursorGot := rune(s.src[i])
 		cursorExpected := rune(sequence[j])
-		// log.Printf("(i:%d;j:%d) head: %c seekSeq: (eq %c %c)", i, j, s.peek(), cursorGot, cursorExpected)
+		// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq: (eq %c %c)", i, j, s.peek(), cursorGot, cursorExpected)
 
 		if cursorGot != cursorExpected {
-			// log.Printf("(i:%d;j:%d) head: %c seekSeq (leaving)", i, j, s.peek())
+			// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq (leaving)", i, j, s.peek())
 			return false
 		}
 		i++
 		j++
 	}
-	// log.Printf("%d: matchSequence true! %v", headIdx, runesstr)
+	// s.logger.Debug("%d: matchSequence true! %v", headIdx, runesstr)
 	s.advanceBy(len(sequence))
-	// log.Printf("(i:%d;j:%d) head: %c seekSeq (advanced %d)", i, j, rune(s.peek()), len(sequence))
+	// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq (advanced %d)", i, j, rune(s.peek()), len(sequence))
 	return true
 
 }
@@ -137,7 +143,7 @@ func (s *Scanner) Scan() []Token {
 		if isPunctuation(rune(head)) {
 			s.scanPunctuators()
 		}
-		log.Printf("%d: (%c) next iter..", s.idxHead, s.peek())
+		s.logger.Debug("%d: (%c) next iter..", s.idxHead, s.peek())
 		s.advance()
 	}
 
@@ -175,7 +181,7 @@ func (s *Scanner) scanStringLiteral() {
 	if s.peek() != '"' {
 		return
 	}
-	log.Printf("%d: (scanStringLiteral) entry!", s.idxHead)
+	s.logger.Debug("%d: (scanStringLiteral) entry!", s.idxHead)
 
 	strLength := 1 // advance first quote
 	cursor := 0
@@ -188,7 +194,7 @@ func (s *Scanner) scanStringLiteral() {
 			// TODO: when dealing with escapes, we should probably be better off with unicode code points instead of comparing runes
 			break
 		}
-		log.Printf("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
+		s.logger.Debug("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
 		strLength++
 		s.advance()
 		cursor++
@@ -209,8 +215,8 @@ func (s *Scanner) scanStringLiteral() {
 		upper = len(s.src) - 1
 	}
 
-	log.Printf("%d: (scanStringLiteral) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
-	s.addToken(TNumericLiteral, s.src[s.idxHeadStart:upper])
+	s.logger.Debug("%d: (scanStringLiteral) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
+	s.addToken(TStringLiteral, s.src[s.idxHeadStart:upper])
 }
 
 // Template literals
@@ -277,7 +283,7 @@ func isLegalOctalDigitIntermediate(r rune) bool {
 func (s *Scanner) scanDigits() {
 	headNext, _ := s.peekAhead(1)
 
-	log.Printf("%d: (scanDigits:entry) head:%c headNext:%c", s.idxHead, s.peek(), headNext)
+	s.logger.Debug("%d: (scanDigits:entry) head:%c headNext:%c", s.idxHead, s.peek(), headNext)
 	// Derive if it's a valid numeric literal; if so, of which type
 	var numberType NumericLiteralType
 	if s.peek() == '0' {
@@ -294,7 +300,7 @@ func (s *Scanner) scanDigits() {
 		// it can be a dec literal
 		numberType = LiteralDecimal
 	} else {
-		log.Printf("scanDigits:Invalid number!")
+		s.logger.Debug("scanDigits:Invalid number!")
 		// invalid number
 		return
 	}
@@ -304,11 +310,11 @@ func (s *Scanner) scanDigits() {
 	case LiteralDecimal:
 		for isLegalDecDigitIntermediate(s.peek()) || isLegalBigIntDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
-			log.Printf("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isDecimalDigit(headNext))
+			s.logger.Debug("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isDecimalDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if err == nil && (isLegalDecDigitIntermediate(headNext) || isLegalBigIntDigitIntermediate(headNext)) {
-				log.Printf("%d: (scanDecimalDigits) advancing decimal number...", s.idxHead)
+				s.logger.Debug("%d: (scanDecimalDigits) advancing decimal number...", s.idxHead)
 				s.advance()
 				digitLength++
 			} else {
@@ -318,11 +324,11 @@ func (s *Scanner) scanDigits() {
 	case LiteralHex:
 		for isLegalHexDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
-			log.Printf("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isHexDigit(headNext))
+			s.logger.Debug("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isHexDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if err == nil && (isLegalHexDigitIntermediate(headNext)) {
-				log.Printf("%d: (scanHexDigits) advancing hex literal...", s.idxHead)
+				s.logger.Debug("%d: (scanHexDigits) advancing hex literal...", s.idxHead)
 				s.advance()
 				digitLength++
 			} else {
@@ -332,11 +338,11 @@ func (s *Scanner) scanDigits() {
 	case LiteralBinary:
 		for isLegalBinaryDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
-			log.Printf("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isBinaryDigit(headNext))
+			s.logger.Debug("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isBinaryDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if err == nil && (isLegalBinaryDigitIntermediate(headNext)) {
-				log.Printf("%d: (scanBinaryDigits) advancing binary literal...", s.idxHead)
+				s.logger.Debug("%d: (scanBinaryDigits) advancing binary literal...", s.idxHead)
 				s.advance()
 				digitLength++
 			} else {
@@ -346,11 +352,11 @@ func (s *Scanner) scanDigits() {
 	case LiteralOctal:
 		for isLegalOctalDigitIntermediate(s.peek()) {
 			headNext, err := s.peekAhead(1)
-			log.Printf("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isOctalDigit(headNext))
+			s.logger.Debug("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isOctalDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if err == nil && (isLegalOctalDigitIntermediate(headNext)) {
-				log.Printf("%d: (scanOctalDigit) advancing octal literal...", s.idxHead)
+				s.logger.Debug("%d: (scanOctalDigit) advancing octal literal...", s.idxHead)
 				s.advance()
 				digitLength++
 			} else {
@@ -385,7 +391,7 @@ func (s *Scanner) scanPunctuators() {
 	switch s.peek() {
 	// Simple punctuators
 	case ' ':
-		// log.Printf("%d: <whitespace>", s.idxHead)
+		// s.logger.Debug("%d: <whitespace>", s.idxHead)
 		return
 		// nothing
 	case '}':
@@ -516,12 +522,5 @@ func (s *Scanner) scanPunctuators() {
 		} else {
 			s.addToken(TSlash, nil)
 		}
-	}
-}
-
-func main() {
-	runes := []rune{'!', '.', ',', '>', '<', '=', '+', '-', '*', '/', '%', '&', '|', '^', '~', '(', ')', '[', ']', '{', '}', ';', ':', '?', ' ', '\t', '\r', '\n'}
-	for _, r := range runes {
-		fmt.Printf("%s - %d\n", string(r), r)
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+var defaultLogger = NewSimpleLogger(ModeDebug)
+
 func TestScanSimplePunctuators(t *testing.T) {
 	src := `;():{}[];`
 
@@ -21,7 +23,7 @@ func TestScanSimplePunctuators(t *testing.T) {
 		{T: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -42,7 +44,7 @@ func TestScanDoublePunctuators(t *testing.T) {
 			{T: TLessThanEqual, Lexeme: "<=", Literal: nil, Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -62,7 +64,7 @@ func TestScanDoublePunctuators(t *testing.T) {
 			{T: TArrow, Lexeme: "=>", Literal: nil, Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -79,7 +81,7 @@ func TestScanDoublePunctuators(t *testing.T) {
 			{T: TLogicalOrAssign, Lexeme: "||=", Literal: nil, Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -95,7 +97,7 @@ func TestScanDoublePunctuators(t *testing.T) {
 			{T: TMinusAssign, Lexeme: "-=", Literal: nil, Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -109,7 +111,7 @@ func TestScanDoublePunctuators(t *testing.T) {
 			{T: TSlashAssign, Lexeme: "/=", Literal: nil, Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -168,7 +170,7 @@ func TestScanDigits_DecimalLiterals(t *testing.T) {
 			{T: TNumericLiteral, Lexeme: "0.E-50", Literal: "0.E-50", Line: 0, Column: 0},
 		}
 
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 
@@ -212,7 +214,7 @@ func TestScanDigits_DecimalLiterals(t *testing.T) {
 			{T: TNumericLiteral, Lexeme: ".5E+50", Literal: ".5E+50", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: ".9E-50", Literal: ".9E-50", Line: 0, Column: 0},
 		}
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -233,7 +235,7 @@ func TestScanDigits_DecimalLiterals(t *testing.T) {
 			{T: TNumericLiteral, Lexeme: "007654321e+1", Literal: "007654321e+1", Line: 0, Column: 0},
 			{T: TNumericLiteral, Lexeme: "000e+1", Literal: "000e+1", Line: 0, Column: 0},
 		}
-		scanner := NewScanner(src)
+		scanner := NewScanner(src, defaultLogger)
 		got := scanner.Scan()
 		assertLexemes(t, got, expected)
 	})
@@ -252,7 +254,7 @@ func TestScanDigits_HexIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0xB_AAB_445", Literal: "0xB_AAB_445", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 
@@ -283,7 +285,7 @@ func TestScanDigits_DecimalBigIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "1_923_921_839_1273n", Literal: "1_923_921_839_1273n", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -311,7 +313,7 @@ func TestScanDigits_BinaryIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0b0100_0101_0110", Literal: "0b0100_0101_0110", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -338,7 +340,7 @@ func TestScanDigits_OctalIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0o1234_5672_5012", Literal: "0o1234_5672_5012", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -388,7 +390,7 @@ func TestScanString_DoubleString_1P(t *testing.T) {
 		{T: TStringLiteral, Lexeme: `"#"`, Literal: `"#"`, Line: 0, Column: 0},
 		{T: TStringLiteral, Lexeme: `"\na\n\n$\n\r\n\t\n\v\n\f"`, Literal: `"\na\n\n$\n\r\n\t\n\v\n\f"`, Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -435,7 +437,7 @@ func TestScanString_DoubleString_Escapes(t *testing.T) {
 		{T: TStringLiteral, Lexeme: `"\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0"`, Literal: `"\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0"`, Line: 0, Column: 0},
 		{T: TStringLiteral, Lexeme: `"\u0000\u0001\u00005\u99999"`, Literal: `"\u0000\u0001\u00005\u99999"`, Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
@@ -467,7 +469,7 @@ func TestScanTemplateLiteral_NoSubstitutionTemplate(t *testing.T) {
 		{T: TTemplateLiteral, Lexeme: "`scan\n\nthis\n\ntoo!`", Literal: "scan\n\nthis\n\ntoo!", Line: 0, Column: 0},
 		{T: TTemplateLiteral, Lexeme: "`bla\n\n\nbla`", Literal: "bla\n\n\nbla", Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src)
+	scanner := NewScanner(src, defaultLogger)
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
