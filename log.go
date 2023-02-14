@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"log"
+)
 
 type LoggerMode byte
 
@@ -28,22 +31,22 @@ func NewSimpleLogger(mode LoggerMode) *SimpleLogger {
 
 func (l *SimpleLogger) Debug(format string, args ...any) {
 	if ModeDebug&l.mode != 0 {
-		fmt.Printf(fmt.Sprintf("debug: %s", format), args)
+		log.Printf(fmt.Sprintf("debug: %s", format), args)
 	}
 }
 
 func (l *SimpleLogger) Info(format string, args ...any) {
 	if ModeInfo&l.mode != 0 {
-		fmt.Printf(fmt.Sprintf("info: %s", format), args)
+		log.Printf(fmt.Sprintf("info: %s", format), args)
 	}
 }
 
 func (l *SimpleLogger) Warn(format string, args ...any) {
 	if ModeWarn&l.mode != 0 {
-		fmt.Printf(fmt.Sprintf("warning: %s", format), args)
+		log.Printf(fmt.Sprintf("warning: %s", format), args)
 	}
 }
 
 func (l *SimpleLogger) Error(format string, args ...any) {
-	fmt.Printf(fmt.Sprintf("error: %s", format), args)
+	log.Printf(fmt.Sprintf("error: %s", format), args)
 }

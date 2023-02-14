@@ -1,8 +1,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -58,11 +58,11 @@ func (s *Scanner) peekBehind() rune {
 	return rune(s.src[s.idxHead-1])
 }
 
-func (s *Scanner) peekAhead(n int) (rune, error) {
+func (s *Scanner) peekAhead(n int) rune {
 	if s.idxHead+n >= len(s.src) {
-		return rune(0), errEOF
+		panic(errEOF)
 	}
-	return rune(s.src[s.idxHead+n]), nil
+	return rune(s.src[s.idxHead+n])
 }
 
 func (s *Scanner) addToken(t TokenType, literal interface{}) {
@@ -74,6 +74,7 @@ func (s *Scanner) addToken(t TokenType, literal interface{}) {
 		s.logger.Debug("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
 		lexeme = string(s.peek())
 	} else {
+		s.logger.Debug("%d: addToken (idxHead+1 > len(src)) %d %d", s.idxHead, s.idxHeadStart, s.idxHead)
 		lexeme = s.src[s.idxHeadStart : s.idxHead+1]
 	}
 	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
@@ -131,7 +132,10 @@ func (s *Scanner) Scan() []Token {
 		s.idxHeadStart = s.idxHead
 		head := s.peek()
 
-		if s.peek() == '"' {
+		if isIdentifierStart(head) {
+			s.scanIdentifiers()
+		}
+		if s.peek() == '"' || s.peek() == '\'' {
 			s.scanStringLiteral()
 		}
 		if s.peek() == '`' {
@@ -161,6 +165,59 @@ func (s *Scanner) Scan() []Token {
 	return s.tokens
 }
 
+// func isIdentifierPart(r rune) bool {
+// 	return isIdentifierStart(r) || isDecimalDigit(r)
+// }
+
+func isIdentifierStart(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '$' || r == '_'
+}
+
+func isIdentifierPart(r rune) bool {
+	return isIdentifierStart(r) || isDecimalDigit(r) || r == '\\'
+}
+
+// Identifiers
+//
+// https://262.ecma-international.org/#sec-names-and-keywords
+func (s *Scanner) scanIdentifiers() {
+	if !isIdentifierStart(s.peek()) {
+		return
+	}
+
+	for isIdentifierPart(s.peek()) {
+		if s.idxHead == len(s.src)-1 /* if EOF */ {
+			break
+		}
+		headNext := s.peekAhead(1)
+		if s.peek() == '\\' && headNext == 'u' {
+			if s.idxHead+4 > len(s.src)-1 {
+				// invalid unicode escape
+				break
+			} else if !isHexDigit(s.peekAhead(2)) || !isHexDigit(s.peekAhead(3)) || !isHexDigit(s.peekAhead(4)) || !isHexDigit(s.peekAhead(5)) {
+				// invalid unicode escape
+				break
+			}
+		}
+
+		s.logger.Debug("%d: (scanIdentifier): %c", s.idxHead, s.peek())
+		// idLength++
+		s.advance()
+	}
+
+	var upper, lower int
+	lower = s.idxHeadStart
+	upper = s.idxHeadStart + s.idxHead // collect final quote
+	if upper >= len(s.src) {
+		upper = len(s.src)
+	}
+	// s.idxHead = s.idxHead - 1 // collect final quote
+
+	log.Printf("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
+	// s.logger.Debug("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
+	s.addToken(TIdentifier, s.src[s.idxHeadStart:upper])
+}
+
 func isLegalStringLiteralIntermediate(r rune) bool {
 	return r != '"'
 }
@@ -173,34 +230,66 @@ func (s *Scanner) isValidEscapeSequence(r rune) bool {
 	return false
 }
 
+type StringLiteralType string
+
+const (
+	SingleQuote StringLiteralType = "singleq"
+	DoubleQuote StringLiteralType = "doubleq"
+)
+
 // String literals
 //
 // https://262.ecma-international.org/#sec-literals-string-literals
 func (s *Scanner) scanStringLiteral() {
 	// If we got here, it means that we spotted a double quote
-	if s.peek() != '"' {
+	var strType StringLiteralType
+	if s.peek() == '"' {
+		strType = DoubleQuote
+	} else if s.peek() == '\'' {
+		strType = SingleQuote
+	} else {
 		return
 	}
+
 	s.logger.Debug("%d: (scanStringLiteral) entry!", s.idxHead)
 
 	strLength := 1 // advance first quote
 	cursor := 0
 	invalidString := false
-	for {
-		headNext, err := s.peekAhead(1)
-		if s.idxHead > len(s.src)-1 /* if EOF */ ||
-			(s.peek() == '"' && cursor > 0 && s.peekBehind() != '\\') /* it's an end quote " */ ||
-			(s.peek() == '"' && cursor > 0 && s.peekBehind() == '\\' && headNext == ' ') {
-			// TODO: when dealing with escapes, we should probably be better off with unicode code points instead of comparing runes
-			break
+	switch strType {
+	case DoubleQuote:
+		for {
+			if s.idxHead == len(s.src)-1 /* if EOF */ {
+				break
+			}
+			headNext := s.peekAhead(1)
+			if s.idxHead > len(s.src)-1 /* if EOF */ ||
+				(s.peek() == '"' && cursor > 0 && s.peekBehind() != '\\') /* it's an end quote " */ ||
+				(s.peek() == '"' && cursor > 0 && s.peekBehind() == '\\' && headNext == ' ') {
+				// TODO: when dealing with escapes, we should probably be better off with unicode code points instead of comparing runes
+				break
+			}
+			s.logger.Debug("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
+			strLength++
+			s.advance()
+			cursor++
 		}
-		s.logger.Debug("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
-		strLength++
-		s.advance()
-		cursor++
-
-		if errors.Is(err, errEOF) {
-			break
+	case SingleQuote:
+		for {
+			if s.idxHead == len(s.src)-1 /* if EOF */ {
+				break
+			}
+			headNext := s.peekAhead(1)
+			if s.idxHead > len(s.src)-1 /* if EOF */ ||
+				(s.peek() == '\'' && cursor > 0 && s.peekBehind() != '\\') /* it's an end quote " */ ||
+				(s.peek() == '\'' && cursor > 0 && s.peekBehind() == '\\' && headNext == ' ') {
+				// TODO: when dealing with escapes, we should probably be better off with unicode code points instead of comparing runes
+				break
+			}
+			s.logger.Debug("%d: (scanStringLiteral): %c", s.idxHead, s.peek())
+			strLength++
+			s.advance()
+			cursor++
 		}
 	}
 
@@ -211,7 +300,7 @@ func (s *Scanner) scanStringLiteral() {
 	var upper, lower int
 	lower = s.idxHeadStart
 	upper = s.idxHeadStart + strLength + 1 // collect final quote
-	if upper > len(s.src)-1 {
+	if upper >= len(s.src)-1 {
 		upper = len(s.src) - 1
 	}
 
@@ -281,7 +370,7 @@ func isLegalOctalDigitIntermediate(r rune) bool {
 }
 
 func (s *Scanner) scanDigits() {
-	headNext, _ := s.peekAhead(1)
+	headNext := s.peekAhead(1)
 
 	s.logger.Debug("%d: (scanDigits:entry) head:%c headNext:%c", s.idxHead, s.peek(), headNext)
 	// Derive if it's a valid numeric literal; if so, of which type
@@ -309,11 +398,14 @@ func (s *Scanner) scanDigits() {
 	switch numberType {
 	case LiteralDecimal:
 		for isLegalDecDigitIntermediate(s.peek()) || isLegalBigIntDigitIntermediate(s.peek()) {
-			headNext, err := s.peekAhead(1)
-			s.logger.Debug("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isDecimalDigit(headNext))
+			if s.idxHead == len(s.src)-1 {
+				break
+			}
+			headNext := s.peekAhead(1)
+			s.logger.Debug("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isDecimalDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
-			if err == nil && (isLegalDecDigitIntermediate(headNext) || isLegalBigIntDigitIntermediate(headNext)) {
+			if isLegalDecDigitIntermediate(headNext) || isLegalBigIntDigitIntermediate(headNext) {
 				s.logger.Debug("%d: (scanDecimalDigits) advancing decimal number...", s.idxHead)
 				s.advance()
 				digitLength++
@@ -323,11 +415,14 @@ func (s *Scanner) scanDigits() {
 		}
 	case LiteralHex:
 		for isLegalHexDigitIntermediate(s.peek()) {
-			headNext, err := s.peekAhead(1)
-			s.logger.Debug("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isHexDigit(headNext))
+			if s.idxHead == len(s.src)-1 {
+				break
+			}
+			headNext := s.peekAhead(1)
+			s.logger.Debug("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isHexDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
-			if err == nil && (isLegalHexDigitIntermediate(headNext)) {
+			if isLegalHexDigitIntermediate(headNext) {
 				s.logger.Debug("%d: (scanHexDigits) advancing hex literal...", s.idxHead)
 				s.advance()
 				digitLength++
@@ -337,11 +432,14 @@ func (s *Scanner) scanDigits() {
 		}
 	case LiteralBinary:
 		for isLegalBinaryDigitIntermediate(s.peek()) {
-			headNext, err := s.peekAhead(1)
-			s.logger.Debug("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isBinaryDigit(headNext))
+			if s.idxHead == len(s.src)-1 {
+				break
+			}
+			headNext := s.peekAhead(1)
+			s.logger.Debug("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isBinaryDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
-			if err == nil && (isLegalBinaryDigitIntermediate(headNext)) {
+			if isLegalBinaryDigitIntermediate(headNext) {
 				s.logger.Debug("%d: (scanBinaryDigits) advancing binary literal...", s.idxHead)
 				s.advance()
 				digitLength++
@@ -351,11 +449,14 @@ func (s *Scanner) scanDigits() {
 		}
 	case LiteralOctal:
 		for isLegalOctalDigitIntermediate(s.peek()) {
-			headNext, err := s.peekAhead(1)
-			s.logger.Debug("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, err, isOctalDigit(headNext))
+			if s.idxHead == len(s.src)-1 {
+				break
+			}
+			headNext := s.peekAhead(1)
+			s.logger.Debug("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isOctalDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
-			if err == nil && (isLegalOctalDigitIntermediate(headNext)) {
+			if isLegalOctalDigitIntermediate(headNext) {
 				s.logger.Debug("%d: (scanOctalDigit) advancing octal literal...", s.idxHead)
 				s.advance()
 				digitLength++

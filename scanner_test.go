@@ -395,40 +395,40 @@ func TestScanString_DoubleString_1P(t *testing.T) {
 	assertLexemes(t, got, expected)
 }
 
+// DoubleStringCharacter ::
+// | \ EscapeSequence
+//
+// EscapeSequence ::
+// | CharacterEscapeSequence
+// | 0 [lookahead ∉ DecimalDigit]
+// | LegacyOctalEscapeSequence
+// | NonOctalDecimalEscapeSequence
+// | HexEscapeSequence
+// | UnicodeEscapeSequence
+//
+// CharacterEscapeSequence ::
+// | SingleEscapeCharacter
+// | NonEscapeCharacter
+//
+// SingleEscapeCharacter :: one of ' " \ b f n r t v
+// NonEscapeCharacter :: any Unicode point but not one of EscapeCharacter or LineTerminator
+//
+// LegacyOctalEscapeSequence ::
+// | 0 [lookahead ∈ { 8, 9 }]
+// | NonZeroOctalDigit [lookahead ∉ OctalDigit]
+// | ZeroToThree OctalDigit [lookahead ∉ OctalDigit]
+// | FourToSeven OctalDigit
+// | ZeroToThree OctalDigit OctalDigit
+//
+// NonOctalDecimalEscapeSequence :: one of 8 9
+//
+// HexEscapeSequence ::
+// x HexDigit HexDigit
+//
+// UnicodeEscapeSequence ::
+// | u Hex4Digits
+// | u{ CodePoint }
 func TestScanString_DoubleString_Escapes(t *testing.T) {
-	// DoubleStringCharacter ::
-	// | \ EscapeSequence
-	//
-	// EscapeSequence ::
-	// | CharacterEscapeSequence
-	// | 0 [lookahead ∉ DecimalDigit]
-	// | LegacyOctalEscapeSequence
-	// | NonOctalDecimalEscapeSequence
-	// | HexEscapeSequence
-	// | UnicodeEscapeSequence
-	//
-	// CharacterEscapeSequence ::
-	// | SingleEscapeCharacter
-	// | NonEscapeCharacter
-	//
-	// SingleEscapeCharacter :: one of ' " \ b f n r t v
-	// NonEscapeCharacter :: any Unicode point but not one of EscapeCharacter or LineTerminator
-	//
-	// LegacyOctalEscapeSequence ::
-	// | 0 [lookahead ∈ { 8, 9 }]
-	// | NonZeroOctalDigit [lookahead ∉ OctalDigit]
-	// | ZeroToThree OctalDigit [lookahead ∉ OctalDigit]
-	// | FourToSeven OctalDigit
-	// | ZeroToThree OctalDigit OctalDigit
-	//
-	// NonOctalDecimalEscapeSequence :: one of 8 9
-	//
-	// HexEscapeSequence ::
-	// x HexDigit HexDigit
-	//
-	// UnicodeEscapeSequence ::
-	// | u Hex4Digits
-	// | u{ CodePoint }
 	src := `"\\\\\\" "\"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z" "\00\10\20\30\40\50\60\70\80\90" "\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0" "\u0000\u0001\u00005\u99999"`
 	expected := []Token{
 		{T: TStringLiteral, Lexeme: `"\\\\\\"`, Literal: `"\\\\\\"`, Line: 0, Column: 0},
@@ -443,7 +443,7 @@ func TestScanString_DoubleString_Escapes(t *testing.T) {
 }
 
 // SingleStringCharacters ::
-// | SingleStringCharacter SingleStringCharactersopt
+// | SingleStringCharacter SingleStringCharacters?
 //
 // SingleStringCharacter ::
 // | SourceCharacter but not one of ' or \ or LineTerminator
@@ -452,6 +452,65 @@ func TestScanString_DoubleString_Escapes(t *testing.T) {
 // | \ EscapeSequence
 // | LineContinuation
 func TestStringLiteral_Single(t *testing.T) {
+	src := `'   ' '\\\\\\\x01' '\\\\\\\u01' '"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z' '' '\u0000\u0001\u00005\u99999'`
+
+	expected := []Token{
+		{T: TStringLiteral, Lexeme: `'   '`, Literal: `'   '`, Line: 0, Column: 0},
+		{T: TStringLiteral, Lexeme: `'\\\\\\\x01'`, Literal: `\\\\\\\x01'`, Line: 0, Column: 0},
+		{T: TStringLiteral, Lexeme: `'\\\\\\\u01'`, Literal: `\\\\\\\u01'`, Line: 0, Column: 0},
+		{T: TStringLiteral, Lexeme: `'"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z'`, Literal: `'"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z'`, Line: 0, Column: 0},
+		{T: TStringLiteral, Lexeme: `''`, Literal: `''`, Line: 0, Column: 0},
+		{T: TStringLiteral, Lexeme: `'\u0000\u0001\u00005\u99999'`, Literal: `'\u0000\u0001\u00005\u99999'`, Line: 0, Column: 0},
+	}
+	scanner := NewScanner(src, defaultLogger)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
+}
+
+// Identifiers
+// IdentifierName ::
+// | IdentifierStart
+// | IdentifierName IdentifierPart
+//
+// IdentifierStart ::
+// | IdentifierStartChar
+// | \ UnicodeEscapeSequence
+//
+// IdentifierStartChar ::
+// | UnicodeIDStart
+// | $
+// | _
+//
+// IdentifierPart ::
+// | IdentifierPartChar
+// | \ UnicodeEscapeSequence
+//
+// IdentifierPartChar ::
+// | UnicodeIDContinue
+// | $
+// | <ZWNJ>
+// | <ZWJ>
+//
+// UnicodeIDStart ::
+// | any Unicode code point with the Unicode property “ID_Start”
+// UnicodeIDContinue ::
+// | any Unicode code point with the Unicode property “ID_Continue”
+
+func TestScan_IdentifierName(t *testing.T) {
+	src := `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ _012bx $02213 $$$$$ $\u0000\u0001\u0003 _____`
+	expected := []Token{
+		{T: TIdentifier, Lexeme: `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ`, Literal: `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `_012bx`, Literal: `_012bx`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `$02213`, Literal: `$02213`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `$$$$$`, Literal: `$$$$$`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `$\u0000\u0001\u0003`, Literal: `$\u0000\u0001\u0003`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `_____`, Literal: `_____`, Line: 0, Column: 0},
+	}
+
+	debugLogger := NewSimpleLogger(ModeDebug)
+	scanner := NewScanner(src, debugLogger)
+	got := scanner.Scan()
+	assertLexemes(t, got, expected)
 }
 
 // Template Literals
@@ -473,6 +532,9 @@ func TestScanTemplateLiteral_NoSubstitutionTemplate(t *testing.T) {
 	got := scanner.Scan()
 	assertLexemes(t, got, expected)
 }
+
+// TODO: Finish template literals
+// TODO: Finish regexp literals
 
 // /////////////
 //
@@ -514,6 +576,7 @@ func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a
 	if len(got) != len(expected) {
 		failure = true
 	}
+	diffStrs := []string{}
 	for i, expectedToken := range expected {
 		var gotToken Token
 		if i >= len(got) {
@@ -523,8 +586,8 @@ func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a
 		}
 		if !callbackEqualCmp(expectedToken, gotToken) {
 			failure = true
-			t.Errorf("(index:%d)\tgot:\t\t%v", i, callbackPrint(gotToken))
-			t.Errorf("(index:%d)\texpected:\t%v", i, callbackPrint(expected[i]))
+			diffStrs = append(diffStrs, fmt.Sprintf("(index:%d)\tgot:\t\t%v len(%d)", i, callbackPrint(gotToken), len(gotToken.Lexeme)))
+			diffStrs = append(diffStrs, fmt.Sprintf("(index:%d)\texpected:\t%v len(%d)", i, callbackPrint(expected[i]), len(expected[i].Lexeme)))
 		}
 	}
 
@@ -540,9 +603,23 @@ func assertInternal(t *testing.T, got, expected []Token, callbackEqualCmp func(a
 			strGot.Write([]byte(callbackPrint(gotToken)))
 			strExpect.Write([]byte(callbackPrint(expectedToken)))
 		}
+		t.Errorf("Diff on lines:")
+		for _, diffStr := range diffStrs {
+			t.Errorf(diffStr)
+		}
 
+		t.Errorf("Whole string diff:")
 		t.Errorf("got:\t\t%v", strGot.String())
 		t.Errorf("expected:\t%v", strExpect.String())
 		t.Fail()
 	}
+}
+
+func contains(arr []int, val int) bool {
+	for _, v := range arr {
+		if v == val {
+			return true
+		}
+	}
+	return false
 }
