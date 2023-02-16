@@ -36,12 +36,21 @@ func prettyPrintMap(tokens []Token) ([]string, error) {
 
 func main() {
 	s := bufio.NewScanner(os.Stdin)
-	fmt.Printf("> ")
+	// fmt.Printf("> ")
 	logger := NewSimpleLogger(ModeInfo | ModeWarn | ModeError)
-	for s.Scan() {
+	for {
+		fmt.Print("\n> ")
+		n := s.Scan()
+		if !n {
+			break
+		}
 		src := s.Text()
 		scanner := NewScanner(src, logger)
-		tokens := scanner.Scan()
+		tokens, scanErr := scanner.Scan()
+		if scanErr != nil {
+			fmt.Printf("SyntaxError: %s is not valid: %s.", src, scanErr)
+			continue
+		}
 		ptokens, err := prettyPrintMap(tokens)
 		if err != nil {
 			fmt.Printf("ReplError: failed to pretty print tokens %v: %s.", tokens, err)
@@ -58,7 +67,6 @@ func main() {
 			}
 			fmt.Print("]")
 		}
-		fmt.Print("\n> ")
 	}
 
 	if err := s.Err(); err != nil {

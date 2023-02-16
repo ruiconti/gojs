@@ -30,14 +30,14 @@ func NewSimpleLogger(mode LoggerMode) *SimpleLogger {
 }
 
 func (l *SimpleLogger) Debug(format string, args ...any) {
-	if ModeDebug&l.mode != 0 {
-		log.Printf(fmt.Sprintf("debug: %s", format), args)
-	}
+	// if ModeDebug&l.mode != 0 {
+	log.Printf(format, args...)
+	// }
 }
 
 func (l *SimpleLogger) Info(format string, args ...any) {
 	if ModeInfo&l.mode != 0 {
-		log.Printf(fmt.Sprintf("info: %s", format), args)
+		log.Printf(format, args...)
 	}
 }
 

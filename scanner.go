@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 )
 
 var errEOF = fmt.Errorf("EOF")
+var errOOB = fmt.Errorf("out of bounds")
+var errNoLiteralAfterNumber = fmt.Errorf("no literal after number")
+var errDigitExpected = fmt.Errorf("digit expected")
 
 type Scanner struct {
 	// source string being scanned
@@ -19,6 +21,12 @@ type Scanner struct {
 	tokens []Token
 	// reference to the logging mechanism
 	logger *SimpleLogger
+	// errors
+	errors []error
+}
+
+func (s *Scanner) hasErrors() bool {
+	return len(s.errors) > 0
 }
 
 func NewScanner(src string, logger *SimpleLogger) *Scanner {
@@ -58,11 +66,25 @@ func (s *Scanner) peekBehind() rune {
 	return rune(s.src[s.idxHead-1])
 }
 
+func (s *Scanner) peekBehindSafe(n int) (rune, error) {
+	if s.idxHead-n < 0 {
+		return 0, errOOB
+	}
+	return rune(s.src[s.idxHead-n]), nil
+}
+
 func (s *Scanner) peekAhead(n int) rune {
 	if s.idxHead+n >= len(s.src) {
 		panic(errEOF)
 	}
 	return rune(s.src[s.idxHead+n])
+}
+
+func (s *Scanner) peekAheadSafe(n int) (rune, error) {
+	if s.idxHead+n >= len(s.src) {
+		return 0, errEOF
+	}
+	return rune(s.src[s.idxHead+n]), nil
 }
 
 func (s *Scanner) addToken(t TokenType, literal interface{}) {
@@ -76,6 +98,29 @@ func (s *Scanner) addToken(t TokenType, literal interface{}) {
 	} else {
 		s.logger.Debug("%d: addToken (idxHead+1 > len(src)) %d %d", s.idxHead, s.idxHeadStart, s.idxHead)
 		lexeme = s.src[s.idxHeadStart : s.idxHead+1]
+	}
+	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
+	s.tokens = append(s.tokens, Token{
+		T:       t,
+		Lexeme:  lexeme,
+		Literal: literal,
+		// TODO: implement positioning
+		Line:   0,
+		Column: 0,
+	})
+}
+
+func (s *Scanner) addTokenSafe(t TokenType, literal interface{}) {
+	var lexeme string
+	// we only advance the head before calling `addToken` in `seekMatchSequence`
+	// for single matches e.g. `>`, we need to check it here so we don't overly complicate
+	// the scan() function
+	if s.idxHeadStart == s.idxHead {
+		s.logger.Debug("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
+		lexeme = string(s.peek())
+	} else {
+		s.logger.Debug("%d: addToken (idxHead+1 > len(src)) %d %d", s.idxHead, s.idxHeadStart, s.idxHead)
+		lexeme = s.src[s.idxHeadStart:s.idxHead]
 	}
 	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
 	s.tokens = append(s.tokens, Token{
@@ -124,29 +169,70 @@ func (s *Scanner) seekMatchSequence(sequence []rune) bool {
 	s.advanceBy(len(sequence))
 	// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq (advanced %d)", i, j, rune(s.peek()), len(sequence))
 	return true
-
 }
 
-func (s *Scanner) Scan() []Token {
+func (s *Scanner) Scan() ([]Token, error) {
+	s.logger.Debug("%d: parsing: %s", s.idxHead, s.src)
 	for s.idxHead < len(s.src) {
 		s.idxHeadStart = s.idxHead
+
 		head := s.peek()
 
+		// identifiers
 		if isIdentifierStart(head) {
 			s.scanIdentifiers()
 		}
+		if s.idxHead == len(s.src) {
+			// done!
+			break
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
+		}
+
+		// literals
 		if s.peek() == '"' || s.peek() == '\'' {
 			s.scanStringLiteral()
 		}
+		if s.idxHead == len(s.src) {
+			// done!
+			break
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
+		}
+
+		// template literals
 		if s.peek() == '`' {
 			s.scanTemplateLiteral()
 		}
+		if s.idxHead == len(s.src) {
+			// done!
+			break
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
+		}
+
+		// numeric literals
 		if isDecimalDigit(head) || head == '.' {
 			s.scanDigits()
 		}
+		if s.idxHead == len(s.src) {
+			// done!
+			break
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
+		}
+
+		// punctuators
 		if isPunctuation(rune(head)) {
 			s.scanPunctuators()
 		}
+		if s.idxHead == len(s.src) {
+			// done!
+			break
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
+		}
+
 		s.logger.Debug("%d: (%c) next iter..", s.idxHead, s.peek())
 		s.advance()
 	}
@@ -162,7 +248,7 @@ func (s *Scanner) Scan() []Token {
 		tokens.Write([]byte(lit))
 	}
 
-	return s.tokens
+	return s.tokens, nil
 }
 
 // func isIdentifierPart(r rune) bool {
@@ -201,8 +287,16 @@ func (s *Scanner) scanIdentifiers() {
 		}
 
 		s.logger.Debug("%d: (scanIdentifier): %c", s.idxHead, s.peek())
-		// idLength++
 		s.advance()
+	}
+
+	// we reach here when s.idxHead is **not** a valid identifier part
+	// meaning that s.peek() is not part of the identifier
+	s.logger.Debug("%d: (scanIdentifier): finished parsing %c", s.idxHead, s.peek())
+	if !isIdentifierPart(s.peek()) {
+		s.idxHead--
+	} else {
+		s.logger.Debug("%d: (scanIdentifier): finished parsing but idxHead was still valid: %c", s.idxHead, s.peek())
 	}
 
 	var upper, lower int
@@ -213,13 +307,16 @@ func (s *Scanner) scanIdentifiers() {
 	}
 	// s.idxHead = s.idxHead - 1 // collect final quote
 
-	log.Printf("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
+	s.logger.Info("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
 	// s.logger.Debug("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
 	s.addToken(TIdentifier, s.src[s.idxHeadStart:upper])
 }
 
 func isLegalStringLiteralIntermediate(r rune) bool {
 	return r != '"'
+}
+func isAlphaNumeric(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
 }
 
 func (s *Scanner) isValidEscapeSequence(r rune) bool {
@@ -348,7 +445,7 @@ func isHexDigit(r rune) bool {
 }
 
 func isLegalHexDigitIntermediate(r rune) bool {
-	return isHexDigit(r) || r == '_' || r == 'x' || r == 'X'
+	return isHexDigit(r) || r == '_'
 }
 
 // Binary
@@ -357,7 +454,7 @@ func isBinaryDigit(r rune) bool {
 }
 
 func isLegalBinaryDigitIntermediate(r rune) bool {
-	return isBinaryDigit(r) || r == 'b' || r == 'B' || r == '_'
+	return isBinaryDigit(r) || r == '_'
 }
 
 // Octal
@@ -366,26 +463,33 @@ func isOctalDigit(r rune) bool {
 }
 
 func isLegalOctalDigitIntermediate(r rune) bool {
-	return isOctalDigit(r) || r == '_' || r == 'o' || r == 'O'
+	return isOctalDigit(r) || r == '_'
 }
 
 func (s *Scanner) scanDigits() {
-	headNext := s.peekAhead(1)
+	headNext, _ := s.peekAheadSafe(1)
+	zeroStart := false
 
-	s.logger.Debug("%d: (scanDigits:entry) head:%c headNext:%c", s.idxHead, s.peek(), headNext)
-	// Derive if it's a valid numeric literal; if so, of which type
+	// find out what type of number we're dealing with
 	var numberType NumericLiteralType
 	if s.peek() == '0' {
 		if headNext == 'x' || headNext == 'X' {
 			numberType = LiteralHex
+			s.advance()
+			s.advance()
 		} else if headNext == 'b' || headNext == 'B' {
 			numberType = LiteralBinary
+			s.advance()
+			s.advance()
 		} else if headNext == 'o' || headNext == 'O' {
 			numberType = LiteralOctal
+			s.advance()
+			s.advance()
+			zeroStart = true
 		} else {
 			numberType = LiteralDecimal
 		}
-	} else if isDecimalDigit(s.peek()) || (s.peek() == '.' && isDecimalDigit(headNext)) {
+	} else if isDecimalDigit(s.peek()) || s.peek() == '.' {
 		// it can be a dec literal
 		numberType = LiteralDecimal
 	} else {
@@ -394,32 +498,76 @@ func (s *Scanner) scanDigits() {
 		return
 	}
 
+	s.logger.Debug("%d: (scanDigits:entry) head:%c headNext:%c type:%s", s.idxHead, s.peek(), headNext, numberType)
 	digitLength := 1
+	errors := []error{}
+	safe := false
+	// limitedE := 0
 	switch numberType {
 	case LiteralDecimal:
-		for isLegalDecDigitIntermediate(s.peek()) || isLegalBigIntDigitIntermediate(s.peek()) {
-			if s.idxHead == len(s.src)-1 {
+		for {
+			if s.idxHead == len(s.src) {
 				break
 			}
-			headNext := s.peekAhead(1)
-			s.logger.Debug("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isDecimalDigit(headNext))
-			// if next digit is a valid intermediate representation, then we can keep parsing
-			// WARNING: this is naively permissive and will allow tons of illegal combinations
-			if isLegalDecDigitIntermediate(headNext) || isLegalBigIntDigitIntermediate(headNext) {
-				s.logger.Debug("%d: (scanDecimalDigits) advancing decimal number...", s.idxHead)
+			s.logger.Debug("%d: (scanDecimalDigits) head:%c headNext:%c digitLength:%d isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isDecimalDigit(headNext))
+			headNext, errAhead := s.peekAheadSafe(1)
+			headBefore, errBehind := s.peekBehindSafe(1)
+			if isLegalDecDigitIntermediate(s.peek()) {
+				// current: e | E
+				if (errAhead == nil && (s.peek() == 'e' || s.peek() == 'E') && !isDecimalDigit(headNext) && headNext != '+' && headNext != '-') ||
+					(errAhead != nil && (s.peek() == 'e' || s.peek() == 'E')) {
+					// only digits allowed after e: 10e, 10e-, 10e, 10e.
+					errors = append(errors, errDigitExpected)
+					break
+				}
+				// current + | - | _
+				if (errAhead == nil && (s.peek() == '+' || s.peek() == '-' || s.peek() == '_') && !isDecimalDigit(headNext)) ||
+					(errAhead != nil && (s.peek() == '+' || s.peek() == '-' || s.peek() == '_')) {
+					// 10e+, 10_, 10e-
+					errors = append(errors, errDigitExpected)
+					break
+				}
+				if errBehind == nil && (s.peek() == '+' || s.peek() == '-') && headBefore != 'e' && headBefore != 'E' {
+					// 1+1, 1-1
+					errors = append(errors, errDigitExpected)
+					break
+				}
+				// current: .
+				if (errAhead == nil /* not last char */ && s.peek() == '.' && headNext != 'e' && headNext != 'E' && (headNext == '+' || headNext == '-' || headNext == '_')) ||
+					// only non-digit allowed after . is e or E
+					(errAhead != nil /* last char */ && s.peek() == '.' && headBefore != 'e' && headBefore != 'E') {
+					// it's ok to end at the end as long as it's digit behind
+					errors = append(errors, errDigitExpected)
+					break
+				}
+
 				s.advance()
 				digitLength++
 			} else {
+				if (zeroStart && digitLength == 1 && (s.peek() == 'n' || s.peek() == 'N')) /* 0n */ ||
+					(!zeroStart && s.peek() == 'n' || s.peek() == 'N') /* 122930n */ {
+					s.advance()
+					// early drop; we find an N we are done! (BigInt)
+				} else if isAlphaNumeric(s.peek()) {
+					errors = append(errors, errNoLiteralAfterNumber)
+				} else if (errAhead == nil /* not last char */ && s.peek() == '.' && !isDecimalDigit(headNext) && headNext != 'e' && headNext != 'E') ||
+					// only non-digit allowed after . is e or E
+					(errAhead != nil /* last char */ && s.peek() == '.' && headBefore != 'e' && headBefore != 'E') {
+					// it's ok to end at the end as long as it's digit behind
+					errors = append(errors, errDigitExpected)
+					break
+				}
 				break
 			}
 		}
+		safe = true
 	case LiteralHex:
 		for isLegalHexDigitIntermediate(s.peek()) {
 			if s.idxHead == len(s.src)-1 {
 				break
 			}
 			headNext := s.peekAhead(1)
-			s.logger.Debug("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d err:%v isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isHexDigit(headNext))
+			s.logger.Debug("%d: (scanHexDigits) head:%c headNext:%c digitLength:%d isDecimalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isHexDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if isLegalHexDigitIntermediate(headNext) {
@@ -436,7 +584,7 @@ func (s *Scanner) scanDigits() {
 				break
 			}
 			headNext := s.peekAhead(1)
-			s.logger.Debug("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d err:%v isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isBinaryDigit(headNext))
+			s.logger.Debug("%d: (scanBinaryDigits) head:%c headNext:%c digitLength:%d isBinaryDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isBinaryDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if isLegalBinaryDigitIntermediate(headNext) {
@@ -453,7 +601,7 @@ func (s *Scanner) scanDigits() {
 				break
 			}
 			headNext := s.peekAhead(1)
-			s.logger.Debug("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d err:%v isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isOctalDigit(headNext))
+			s.logger.Debug("%d: (scanOctalDigit) head:%c headNext:%c digitLength:%d isOctalDigit(headNext):%v", s.idxHead, s.peek(), headNext, digitLength, isOctalDigit(headNext))
 			// if next digit is a valid intermediate representation, then we can keep parsing
 			// WARNING: this is naively permissive and will allow tons of illegal combinations
 			if isLegalOctalDigitIntermediate(headNext) {
@@ -468,6 +616,11 @@ func (s *Scanner) scanDigits() {
 
 	// reached here: we found something that **is not** part of a numeric literal
 	// so we can add the literal token
+	if len(errors) > 0 {
+		s.errors = append(s.errors, errors...)
+		s.logger.Debug("%d: (scanDigits) errors found:%v", s.idxHead, errors)
+		return
+	}
 
 	var literalUpperBound int
 	if s.idxHead+digitLength >= len(s.src) {
@@ -476,7 +629,11 @@ func (s *Scanner) scanDigits() {
 		literalUpperBound = s.idxHead + digitLength
 	}
 
-	s.addToken(TNumericLiteral, s.src[s.idxHeadStart:literalUpperBound])
+	if safe {
+		s.addTokenSafe(TNumericLiteral, s.src[s.idxHeadStart:literalUpperBound])
+	} else {
+		s.addToken(TNumericLiteral, s.src[s.idxHeadStart:literalUpperBound])
+	}
 }
 
 // Punctuators
