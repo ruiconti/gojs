@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"fmt"
@@ -30,9 +30,9 @@ func NewSimpleLogger(mode LoggerMode) *SimpleLogger {
 }
 
 func (l *SimpleLogger) Debug(format string, args ...any) {
-	// if ModeDebug&l.mode != 0 {
-	log.Printf(format, args...)
-	// }
+	if ModeDebug&l.mode != 0 {
+		log.Printf(format, args...)
+	}
 }
 
 func (l *SimpleLogger) Info(format string, args ...any) {
@@ -48,5 +48,6 @@ func (l *SimpleLogger) Warn(format string, args ...any) {
 }
 
 func (l *SimpleLogger) Error(format string, args ...any) {
-	log.Printf(fmt.Sprintf("error: %s", format), args)
+	s := fmt.Sprintf(format, args...)
+	log.Printf(fmt.Sprintf("error: %s", s))
 }

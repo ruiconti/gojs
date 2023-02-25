@@ -30,8 +30,12 @@ func (s *Scanner) scanPunctuators() {
 		s.addToken(TRightBracket, nil)
 	case ';':
 		s.addToken(TSemicolon, nil)
+	case ',':
+		s.addToken(TComma, nil)
 	case ':':
 		s.addToken(TColon, nil)
+	case '~':
+		s.addToken(TTilde, nil)
 	case '>':
 		if s.seekMatchSequence([]rune{'='}) {
 			// >= is greater equal

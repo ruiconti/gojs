@@ -4,24 +4,15 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+
+	gojs "github.com/ruiconti/gojs/internal"
+	"github.com/ruiconti/gojs/lex"
 )
 
-func resolveName(t Token) (string, error) {
-	dicts := []map[TokenType]string{
-		LiteralNames, ReservedWordNames,
-		PunctuationNames}
-	for _, dict := range dicts {
-		if name, ok := dict[t.T]; ok {
-			return name, nil
-		}
-	}
-	return "", fmt.Errorf("token name not found: %d", t.T)
-}
-
-func prettyPrintMap(tokens []Token) ([]string, error) {
+func prettyPrintMap(tokens []lex.Token) ([]string, error) {
 	var result []string
 	for _, token := range tokens {
-		name, err := resolveName(token)
+		name, err := lex.ResolveName(token)
 		if err != nil {
 			return []string{}, err
 		}
@@ -37,7 +28,7 @@ func prettyPrintMap(tokens []Token) ([]string, error) {
 func main() {
 	s := bufio.NewScanner(os.Stdin)
 	// fmt.Printf("> ")
-	logger := NewSimpleLogger(ModeInfo | ModeWarn | ModeError)
+	logger := gojs.NewSimpleLogger(gojs.ModeInfo | gojs.ModeWarn | gojs.ModeError)
 	for {
 		fmt.Print("\n> ")
 		n := s.Scan()
@@ -45,7 +36,7 @@ func main() {
 			break
 		}
 		src := s.Text()
-		scanner := NewScanner(src, logger)
+		scanner := lex.NewScanner(src, logger)
 		tokens, scanErr := scanner.Scan()
 		if scanErr != nil {
 			fmt.Printf("SyntaxError: %s is not valid: %s.", src, scanErr)

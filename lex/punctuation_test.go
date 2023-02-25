@@ -5,7 +5,7 @@ import (
 )
 
 func TestScanSimplePunctuators(t *testing.T) {
-	src := `;():{}[];`
+	src := `;():{}[];,~`
 
 	expected := []Token{
 		{T: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
@@ -17,6 +17,8 @@ func TestScanSimplePunctuators(t *testing.T) {
 		{T: TLeftBracket, Lexeme: "[", Literal: nil, Line: 0, Column: 0},
 		{T: TRightBracket, Lexeme: "]", Literal: nil, Line: 0, Column: 0},
 		{T: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
+		{T: TComma, Lexeme: ",", Literal: nil, Line: 0, Column: 0},
+		{T: TTilde, Lexeme: "~", Literal: nil, Line: 0, Column: 0},
 	}
 
 	scanner := NewScanner(src, defaultLogger)

@@ -22,102 +22,102 @@ const (
 	TRegularExpressionLiteral
 	TTemplateLiteral
 
-	// Reserved words
+	// Other
+	TAnd
+	TAndAssign
+	TArrow
+	TAssign
 	TAwait
+	TBang
+	TBitwiseNot
 	TBreak
 	TCase
 	TCatch
 	TClass
+	TColon
+	TComma
 	TConst
 	TContinue
 	TDebugger
 	TDefault
 	TDelete
 	TDo
+	TDoubleQuestionMark
+	TEllipsis
 	TElse
 	TEnum
+	TEOF
+	TEqual
 	TExport
 	TExtends
 	TFalse
 	TFinally
 	TFor
 	TFunction
+	TGreaterThan
+	TGreaterThanEqual
 	TIf
 	TImport
 	TIn
 	TInstanceof
+	TLeftBrace
+	TLeftBracket
+	TLeftParen
+	TLeftShift
+	TLeftShiftAssign
+	TLessThan
+	TLessThanEqual
 	TLet
+	TLogicalAnd
+	TLogicalAndAssign
+	TLogicalOr
+	TLogicalOrAssign
+	TMinus
+	TMinusAssign
+	TMinusMinus
 	TNew
+	TNotEqual
 	TNull
+	TOr
+	TOrAssign
+	TPercent
+	TPercentAssign
+	TPeriod
+	TPlus
+	TPlusAssign
+	TPlusPlus
+	TQuestionMark
 	TReturn
+	TRightBrace
+	TRightBracket
+	TRightParen
+	TRightShift
+	TRightShiftAssign
+	TSemicolon
+	TSlash
+	TSlashAssign
+	TStar
+	TStarAssign
+	TStrictEqual
+	TStrictNotEqual
 	TSuper
 	TSwitch
 	TThis
 	TThrow
+	TTilde
 	TTrue
 	TTry
 	TTypeof
+	TUndefined
+	TUnsignedRightShift
+	TUnsignedRightShiftAssign
 	TVar
 	TVoid
 	TWhile
 	TWith
-	TYield
-
-	// Punctuators
-	TLeftBrace
-	TRightBrace
-	TLeftParen
-	TRightParen
-	TLeftBracket
-	TRightBracket
-	TPeriod
-	TEllipsis
-	TSemicolon
-	TComma
-	TLessThan
-	TGreaterThan
-	TLessThanEqual
-	TGreaterThanEqual
-	TEqual
-	TNotEqual
-	TStrictEqual
-	TStrictNotEqual
-	TPlus
-	TMinus
-	TStar
-	TPercent
-	TPlusPlus
-	TMinusMinus
-	TLeftShift
-	TRightShift
-	TUnsignedRightShift
-	TAnd
-	TOr
 	TXor
-	TBang
-	TBitwiseNot
-	TLogicalAnd
-	TLogicalOr
-	TQuestionMark
-	TDoubleQuestionMark
-	TColon
-	TAssign
-	TPlusAssign
-	TMinusAssign
-	TStarAssign
-	TPercentAssign
-	TLeftShiftAssign
-	TRightShiftAssign
-	TUnsignedRightShiftAssign
-	TAndAssign
-	TOrAssign
 	TXorAssign
-	TLogicalAndAssign
-	TLogicalOrAssign
-	TArrow
-	TSlash
-	TSlashAssign
-	TEOF
+	TYield
 )
 
 var LiteralNames = map[TokenType]string{
@@ -163,6 +163,7 @@ var ReservedWordNames = map[TokenType]string{
 	TThrow:      "throw",
 	TTry:        "try",
 	TTypeof:     "typeof",
+	TUndefined:  "undefined",
 	TVar:        "var",
 	TVoid:       "void",
 	TWhile:      "while",
@@ -225,4 +226,5 @@ var PunctuationNames = map[TokenType]string{
 	TArrow:                    "=>",
 	TSlash:                    "/",
 	TSlashAssign:              "/=",
+	TTilde:                    "~",
 }

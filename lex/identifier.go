@@ -1,5 +1,7 @@
 package lex
 
+import "github.com/ruiconti/gojs/internal"
+
 func isIdentifierStart(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '$' || r == '_'
 }
@@ -7,6 +9,8 @@ func isIdentifierStart(r rune) bool {
 func isIdentifierPart(r rune) bool {
 	return isIdentifierStart(r) || isDecimalDigit(r) || r == '\\'
 }
+
+var keywords = internal.MapInvert(ReservedWordNames)
 
 // Identifiers
 //
@@ -16,6 +20,7 @@ func (s *Scanner) scanIdentifiers() {
 		return
 	}
 
+	s.advance()
 	for isIdentifierPart(s.peek()) {
 		if s.idxHead == len(s.src)-1 /* if EOF */ {
 			break
@@ -50,7 +55,13 @@ func (s *Scanner) scanIdentifiers() {
 	if upper >= len(s.src) {
 		upper = len(s.src)
 	}
-	// s.idxHead = s.idxHead - 1 // collect final quote
+
+	// Try to parse it as a reserved word
+	candidate := s.src[lower:upper]
+	if token, ok := keywords[candidate]; ok {
+		s.addToken(token, candidate)
+		return
+	}
 
 	s.logger.Info("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
 	// s.logger.Debug("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
