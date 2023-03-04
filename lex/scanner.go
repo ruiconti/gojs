@@ -10,7 +10,14 @@ import (
 var errEOF = fmt.Errorf("EOF")
 var errOOB = fmt.Errorf("out of bounds")
 var errNoLiteralAfterNumber = fmt.Errorf("no literal after number")
+var errUnexpectedToken = fmt.Errorf("unexpected token")
 var errDigitExpected = fmt.Errorf("digit expected")
+var errInfiniteLoop = fmt.Errorf("infinite loop detected")
+
+// TODO: below are untested
+var errUnterminatedStringLiteral = fmt.Errorf("unterminated string literal")
+var errBadEscapeSequence = fmt.Errorf("bad character escape sequence")
+var errInvalidNumericEscape = fmt.Errorf("invalid numeric escape")
 
 type Scanner struct {
 	// source string being scanned
@@ -44,10 +51,6 @@ func NewScanner(src string, logger *gojs.SimpleLogger) *Scanner {
 	}
 }
 
-func (s *Scanner) advance() {
-	s.idxHead += 1
-}
-
 func (s *Scanner) advanceBy(n int) {
 	s.idxHead += n
 }
@@ -56,79 +59,33 @@ func (s *Scanner) peek() rune {
 	return rune(s.src[s.idxHead])
 }
 
-func (s *Scanner) isEOF(idx int) bool {
-	return idx >= len(s.src)
-}
-
-func (s *Scanner) isPeekAheadEOF() bool {
-	return s.isEOF(s.idxHead + 1)
-}
-
-func (s *Scanner) peekBehind() rune {
-	return rune(s.src[s.idxHead-1])
-}
-
-func (s *Scanner) peekBehindSafe(n int) (rune, error) {
-	if s.idxHead-n < 0 {
+func (s *Scanner) peekN(n int) (rune, error) {
+	if s.idxHead+n < 0 {
 		return 0, errOOB
-	}
-	return rune(s.src[s.idxHead-n]), nil
-}
-
-func (s *Scanner) peekAhead(n int) rune {
-	if s.idxHead+n >= len(s.src) {
-		panic(errEOF)
-	}
-	return rune(s.src[s.idxHead+n])
-}
-
-func (s *Scanner) peekAheadSafe(n int) (rune, error) {
-	if s.idxHead+n >= len(s.src) {
+	} else if s.idxHead+n >= len(s.src) {
 		return 0, errEOF
 	}
 	return rune(s.src[s.idxHead+n]), nil
 }
 
-func (s *Scanner) addToken(t TokenType, literal interface{}) {
+func (s *Scanner) addTokenSafe(t TokenType) {
 	var lexeme string
-	// we only advance the head before calling `addToken` in `seekMatchSequence`
-	// for single matches e.g. `>`, we need to check it here so we don't overly complicate
-	// the scan() function
-	if s.idxHeadStart == s.idxHead {
-		s.logger.Debug("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
-		lexeme = string(s.peek())
+	if s.idxHead == s.idxHeadStart {
+		if t == TStringLiteral_DoubleQuote || t == TStringLiteral_SingleQuote {
+			// only string literals need this treatment
+			// see in strings parser for more context
+			lexeme = ""
+		} else {
+			lexeme = s.src[s.idxHeadStart : s.idxHead+1]
+		}
 	} else {
-		s.logger.Debug("%d: addToken (idxHead+1 > len(src)) %d %d", s.idxHead, s.idxHeadStart, s.idxHead)
-		lexeme = s.src[s.idxHeadStart : s.idxHead+1]
-	}
-	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
-	s.tokens = append(s.tokens, Token{
-		T:       t,
-		Lexeme:  lexeme,
-		Literal: literal,
-		// TODO: implement positioning
-		Line:   0,
-		Column: 0,
-	})
-}
-
-func (s *Scanner) addTokenSafe(t TokenType, literal interface{}) {
-	var lexeme string
-	// we only advance the head before calling `addToken` in `seekMatchSequence`
-	// for single matches e.g. `>`, we need to check it here so we don't overly complicate
-	// the scan() function
-	if s.idxHeadStart == s.idxHead {
-		s.logger.Debug("%d: addToken (idxHeadStart == idxHead)", s.idxHead)
-		lexeme = string(s.peek())
-	} else {
-		s.logger.Debug("%d: addToken (idxHead+1 > len(src)) %d %d", s.idxHead, s.idxHeadStart, s.idxHead)
 		lexeme = s.src[s.idxHeadStart:s.idxHead]
 	}
-	s.logger.Debug("%d: addToken: %v %v", s.idxHead, t, lexeme)
+	s.logger.Debug("[%d] addTokenSafe -> %v (lex: %v, len: %d)", s.idxHead, ResolveName(t), lexeme, len(lexeme))
 	s.tokens = append(s.tokens, Token{
 		T:       t,
 		Lexeme:  lexeme,
-		Literal: literal,
+		Literal: lexeme,
 		// TODO: implement positioning
 		Line:   0,
 		Column: 0,
@@ -158,36 +115,50 @@ func (s *Scanner) seekMatchSequence(sequence []rune) bool {
 		}
 		cursorGot := rune(s.src[i])
 		cursorExpected := rune(sequence[j])
-		// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq: (eq %c %c)", i, j, s.peek(), cursorGot, cursorExpected)
 
 		if cursorGot != cursorExpected {
-			// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq (leaving)", i, j, s.peek())
 			return false
 		}
 		i++
 		j++
 	}
-	// s.logger.Debug("%d: matchSequence true! %v", headIdx, runesstr)
-	s.advanceBy(len(sequence))
-	// s.logger.Debug("(i:%d;j:%d) head: %c seekSeq (advanced %d)", i, j, rune(s.peek()), len(sequence))
+
 	return true
 }
 
-// TODO: RegExp
-// TODO: Template literals
-func (s *Scanner) Scan() ([]Token, error) {
-	s.logger.Debug("%d: parsing: %s", s.idxHead, s.src)
-	for s.idxHead < len(s.src) {
-		s.idxHeadStart = s.idxHead
+func isWhitespace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\r'
+}
 
+func isNewline(r rune) bool {
+	return r == '\n'
+}
+
+func (s *Scanner) Scan() ([]Token, error) {
+	s.logger.Debug("SRC:\n%s\n\n", s.src)
+
+	var lastHead rune
+	for s.idxHead < len(s.src) {
+		s.logger.Debug("[%d] mainloop: %c", s.idxHead, s.peek())
+		s.prettyPrintScan()
+		s.idxHeadStart = s.idxHead
 		head := s.peek()
+
+		// check whether we're in an endless loop
+		if lastHead == head {
+			s.logger.Debug("infinite loop found, aborting...\n\n")
+			return s.tokens, errInfiniteLoop
+		} else {
+			lastHead = head
+		}
 
 		// identifiers
 		if isIdentifierStart(head) {
 			s.scanIdentifiers()
+		} else if s.hasErrors() {
+			return []Token{}, s.errors[0]
 		}
-		if s.idxHead == len(s.src) {
-			// done!
+		if s.idxHead >= len(s.src) {
 			break
 		} else if s.hasErrors() {
 			return []Token{}, s.errors[0]
@@ -197,7 +168,7 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if s.peek() == '"' || s.peek() == '\'' {
 			s.scanStringLiteral()
 		}
-		if s.idxHead == len(s.src) {
+		if s.idxHead >= len(s.src) {
 			// done!
 			break
 		} else if s.hasErrors() {
@@ -208,7 +179,7 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if s.peek() == '`' {
 			s.scanTemplateLiteral()
 		}
-		if s.idxHead == len(s.src) {
+		if s.idxHead >= len(s.src) {
 			// done!
 			break
 		} else if s.hasErrors() {
@@ -219,7 +190,7 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if isDecimalDigit(head) || head == '.' {
 			s.scanDigits()
 		}
-		if s.idxHead == len(s.src) {
+		if s.idxHead >= len(s.src) {
 			// done!
 			break
 		} else if s.hasErrors() {
@@ -230,15 +201,37 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if isPunctuation(rune(head)) {
 			s.scanPunctuators()
 		}
-		if s.idxHead == len(s.src) {
+		if s.idxHead >= len(s.src) {
 			// done!
 			break
 		} else if s.hasErrors() {
 			return []Token{}, s.errors[0]
 		}
 
-		s.logger.Debug("%d: (%c) next iter..", s.idxHead, s.peek())
-		s.advance()
+		// we should only advance the head if we didn't match anything
+		// otherwise, we would've already advanced the head because of the
+		// addTokenSafe call, which expects to be one index ahead of the end of the token
+		//
+		// example 1:
+		// "fooobar boo"
+		//  ^- head: 0
+		//
+		// "fooobar boo"
+		//        ^- head: 6 (at this point, we are still in scanIdentifier, because `r` is a valid one)
+		//
+		// "fooobar boo"
+		//         ^- head: 7 (now, whitespace is not a valid identifier, and we advance the head)
+		//
+		// example 2:
+		// "??&&=>"
+		//  ^- head: 0
+		//
+		// "??&&=>"
+		//    ^- head: 2 (quit scanPunctuators because we found a valid `??` token with length 2)
+		//               (we are now at the `&` character and we can't advance the head otherwise we'd skip it)
+		if isWhitespace(head) {
+			s.advanceBy(1)
+		}
 	}
 
 	tokens := strings.Builder{}
@@ -251,6 +244,7 @@ func (s *Scanner) Scan() ([]Token, error) {
 		}
 		tokens.Write([]byte(lit))
 	}
+	s.logger.Debug("\nTOKENS:\n%s\n", tokens.String())
 
 	return s.tokens, nil
 }

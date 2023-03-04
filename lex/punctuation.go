@@ -1,152 +1,193 @@
 package lex
 
+import "fmt"
+
 // Punctuators
 //
 // Scan for punctuators is straightforward:
 // we group tokens by their first character, and always try to match
 // the longest possible token, iteratively until we find a match.
 func isPunctuation(r rune) bool {
-	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '~' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == ' '
+	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == '~'
 }
 
 func (s *Scanner) scanPunctuators() {
+	token, c, err := s.innerScanPunctuators(s.peek())
+	if err != nil {
+		return
+	}
+
+	s.advanceBy(c)
+	s.addTokenSafe(token)
+}
+
+func (s *Scanner) innerScanPunctuators(char rune) (TokenType, int, error) {
 	switch s.peek() {
 	// Simple punctuators
 	case ' ':
-		// s.logger.Debug("%d: <whitespace>", s.idxHead)
-		return
-		// nothing
+		return TUnknown, -1, fmt.Errorf("not valid punctuation")
 	case '}':
-		s.addToken(TRightBrace, nil)
+		return TRightBrace, 1, nil
 	case '{':
-		s.addToken(TLeftBrace, nil)
+		return TLeftBrace, 1, nil
 	case '(':
-		s.addToken(TLeftParen, nil)
+		return TLeftParen, 1, nil
 	case ')':
-		s.addToken(TRightParen, nil)
+		return TRightParen, 1, nil
 	case '[':
-		s.addToken(TLeftBracket, nil)
+		return TLeftBracket, 1, nil
 	case ']':
-		s.addToken(TRightBracket, nil)
+		return TRightBracket, 1, nil
 	case ';':
-		s.addToken(TSemicolon, nil)
+		return TSemicolon, 1, nil
 	case ',':
-		s.addToken(TComma, nil)
+		return TComma, 1, nil
 	case ':':
-		s.addToken(TColon, nil)
+		return TColon, 1, nil
 	case '~':
-		s.addToken(TTilde, nil)
+		return TTilde, 1, nil
 	case '>':
-		if s.seekMatchSequence([]rune{'='}) {
-			// >= is greater equal
-			s.addToken(TGreaterThanEqual, nil)
-		} else if s.seekMatchSequence([]rune{'>', '>', '='}) {
+		if s.seekMatchSequence([]rune{'>', '>', '='}) {
 			// >>>= is unsigned right shift assign
-			s.addToken(TUnsignedRightShiftAssign, nil)
+			return TUnsignedRightShiftAssign, 4, nil
 		} else if s.seekMatchSequence([]rune{'>', '>'}) {
 			// >>> is unsigned right shift
-			s.addToken(TUnsignedRightShift, nil)
+			return TUnsignedRightShift, 3, nil
 		} else if s.seekMatchSequence([]rune{'>', '='}) {
 			// >>= is right shift assign
-			s.addToken(TRightShiftAssign, nil)
+			return TRightShiftAssign, 3, nil
+		} else if s.seekMatchSequence([]rune{'='}) {
+			// >= is greater equal
+			return TGreaterThanEqual, 2, nil
 		} else if s.seekMatchSequence([]rune{'>'}) {
 			// >> is right shift
-			s.addToken(TRightShift, nil)
+			return TRightShift, 2, nil
 		} else {
 			// > is greater than
-			s.addToken(TGreaterThan, nil)
+			return TGreaterThan, 1, nil
 		}
 	case '<':
 		if s.seekMatchSequence([]rune{'='}) {
 			// <= is greater equal
-			s.addToken(TLessThanEqual, nil)
+			return TLessThanEqual, 2, nil
 		} else if s.seekMatchSequence([]rune{'<', '='}) {
 			// <<= is left shift assign
-			s.addToken(TLeftShiftAssign, nil)
+			return TLeftShiftAssign, 3, nil
 		} else if s.seekMatchSequence([]rune{'<'}) {
 			// << is left shift
-			s.addToken(TLeftShift, nil)
+			return TLeftShift, 2, nil
 		} else {
 			// < is greater than
-			s.addToken(TLessThan, nil)
+			return TLessThan, 1, nil
 		}
 	case '.':
 		if s.seekMatchSequence([]rune{'.', '.'}) {
-			s.addToken(TEllipsis, nil)
+			return TEllipsis, 3, nil
+			// ... is ellipsis
 		} else {
-			s.addToken(TPeriod, nil)
+			// . is period
+			return TPeriod, 1, nil
 		}
 	case '?':
 		if s.seekMatchSequence([]rune{'?'}) {
-			s.addToken(TDoubleQuestionMark, nil)
+			// ?? is nullish coalescing operator
+			return TDoubleQuestionMark, 2, nil
 		} else {
-			s.addToken(TQuestionMark, nil)
+			// ? is question mark
+			return TQuestionMark, 1, nil
 		}
 	case '!':
 		if s.seekMatchSequence([]rune{'=', '='}) {
-			s.addToken(TStrictNotEqual, nil)
+			// !== is strict not equal
+			return TStrictNotEqual, 3, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TNotEqual, nil)
+			// != is not equal
+			return TNotEqual, 2, nil
 		} else {
-			s.addToken(TBang, nil)
+			// ! is logical not
+			return TBang, 1, nil
 		}
 	case '=':
 		if s.seekMatchSequence([]rune{'=', '='}) {
-			s.addToken(TStrictEqual, nil)
+			// === is strict equal
+			return TStrictEqual, 3, nil
 		} else if s.seekMatchSequence([]rune{'>'}) {
-			s.addToken(TArrow, nil)
+			// => is arrow
+			return TArrow, 2, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TEqual, nil)
+			// == is equal
+			return TEqual, 2, nil
 		} else {
-			s.addToken(TAssign, nil)
+			// = is assign
+			return TAssign, 1, nil
 		}
 	case '&':
 		if s.seekMatchSequence([]rune{'&', '='}) {
-			s.addToken(TLogicalAndAssign, nil)
+			// &&= is logical and operator and assign
+			return TLogicalAndAssign, 3, nil
 		} else if s.seekMatchSequence([]rune{'&'}) {
-			s.addToken(TLogicalAnd, nil)
+			// && is logical and operator
+			return TLogicalAnd, 2, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TAndAssign, nil)
+			// &= is bitwise and operator and assign
+			return TAndAssign, 2, nil
 		} else {
-			s.addToken(TAnd, nil)
+			// & is bitwise and operator
+			return TAnd, 1, nil
 		}
 	case '|':
 		if s.seekMatchSequence([]rune{'|', '='}) {
-			s.addToken(TLogicalOrAssign, nil)
+			// ||= is logical or operator and assign
+			return TLogicalOrAssign, 3, nil
 		} else if s.seekMatchSequence([]rune{'|'}) {
-			s.addToken(TLogicalOr, nil)
+			// || is logical or operator
+			return TLogicalOr, 2, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TOrAssign, nil)
+			// |= is logical bitwise or operator and assign
+			return TOrAssign, 2, nil
 		} else {
-			s.addToken(TOr, nil)
+			// | is logical bitwise or operator
+			return TOr, 1, nil
 		}
 	case '+':
 		if s.seekMatchSequence([]rune{'+'}) {
-			s.addToken(TPlusPlus, nil)
+			// ++ is increment unary operator
+			return TPlusPlus, 2, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TPlusAssign, nil)
+			// += is increment and assign
+			return TPlusAssign, 2, nil
 		} else {
-			s.addToken(TPlus, nil)
+			// + is plus binary operator
+			return TPlus, 1, nil
 		}
 	case '-':
 		if s.seekMatchSequence([]rune{'-'}) {
-			s.addToken(TMinusMinus, nil)
+			// -- is decrement unary operator
+			return TMinusMinus, 2, nil
 		} else if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TMinusAssign, nil)
+			// -= is decrement and assign
+			return TMinusAssign, 2, nil
 		} else {
-			s.addToken(TMinus, nil)
+			// - is minus binary operator
+			return TMinus, 1, nil
 		}
 	case '*':
 		if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TStarAssign, nil)
+			// *= is multiply and assign
+			return TStarAssign, 2, nil
 		} else {
-			s.addToken(TStar, nil)
+			// * is multiply binary operator
+			return TStar, 1, nil
 		}
 	case '/':
 		if s.seekMatchSequence([]rune{'='}) {
-			s.addToken(TSlashAssign, nil)
+			// /= is divide and assign
+			return TSlashAssign, 2, nil
 		} else {
-			s.addToken(TSlash, nil)
+			// / is divide binary operator
+			return TSlash, 1, nil
 		}
+	default:
+		return TUnknown, -1, fmt.Errorf("unknown punctuation: %s", string(s.peek()))
 	}
 }

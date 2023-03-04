@@ -1,31 +1,41 @@
 package lex
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
-	gojs "github.com/ruiconti/gojs/internal"
+	"github.com/ruiconti/gojs/internal"
 )
 
-var defaultLogger = gojs.NewSimpleLogger(gojs.ModeError)
-
 // ResolveName returns the name of a token type.
-func ResolveName(t Token) (string, error) {
+func resolveName(t TokenType) (string, error) {
 	dicts := []map[TokenType]string{
-		LiteralNames, ReservedWordNames,
-		PunctuationNames}
+		LiteralNames,
+		ReservedWordNames,
+		PunctuationNames,
+	}
 	for _, dict := range dicts {
-		if name, ok := dict[t.T]; ok {
+		if name, ok := dict[t]; ok {
 			return name, nil
 		}
 	}
-	return "", fmt.Errorf("token name not found: %d", t.T)
+	return "", fmt.Errorf("token name not found: %d", t)
 }
 
-func assertLiterals(t *testing.T, got, expected []Token) {
+func ResolveName(t TokenType) string {
+	tokName, err := resolveName(t)
+	if err != nil {
+		return "Unknown"
+	}
+	return tokName
+}
+
+func assertLiterals(t *testing.T, logger internal.Logger, got, expected []Token) {
 	assertInternal(
 		t,
+		logger,
 		got,
 		expected, func(a, b Token) bool { return a.Lexeme == b.Lexeme && a.Literal == b.Literal },
 		func(a Token) string {
@@ -41,32 +51,30 @@ func assertLiterals(t *testing.T, got, expected []Token) {
 	)
 }
 
-func assertTokens(t *testing.T, got, expected []Token) {
+func assertTokens(t *testing.T, logger internal.Logger, got, expected []Token) {
 	assertInternal(
 		t,
+		logger,
 		got,
 		expected, func(a, b Token) bool { return a.Lexeme == b.Lexeme && a.Literal == b.Literal && a.T == b.T },
 		func(a Token) string {
 			if a.Literal == nil {
 				return ""
 			}
-			name, err := ResolveName(a)
-			if err != nil {
-				name = fmt.Sprintf("T%d", a.T)
-			}
-			return fmt.Sprintf("nam:%v lit:%v lex:%v", name, a.Literal, a.Lexeme)
+			return fmt.Sprintf("%v (%v)", a.Literal, ResolveName(a.T))
 		},
 		// inline print
 		func(a Token) string {
-			return fmt.Sprintf("%v ", a.Lexeme)
+			return fmt.Sprintf("%v ", a.Literal)
 		},
 	)
 }
 
-func assertLexemes(t *testing.T, got, expected []Token) {
+func assertLexemes(t *testing.T, logger internal.Logger, got, expected []Token) {
 	t.Helper()
 	assertInternal(
 		t,
+		logger,
 		got,
 		expected, func(a, b Token) bool { return a.Lexeme == b.Lexeme },
 		// readable print
@@ -85,6 +93,7 @@ func assertLexemes(t *testing.T, got, expected []Token) {
 
 func assertInternal(
 	t *testing.T,
+	logger internal.Logger,
 	got,
 	expected []Token,
 	callbackEqualCmp func(a,
@@ -107,13 +116,14 @@ func assertInternal(
 		}
 		if !callbackEqualCmp(expectedToken, gotToken) {
 			failure = true
-			diffStrs = append(diffStrs, fmt.Sprintf("(index:%d)\tgot:\t\t%v len(%d)", i, callbackPrint(gotToken), len(gotToken.Lexeme)))
-			diffStrs = append(diffStrs, fmt.Sprintf("(index:%d)\texpected:\t%v len(%d)", i, callbackPrint(expected[i]), len(expected[i].Lexeme)))
+			diffStrs = append(diffStrs, fmt.Sprintf("[%d]\tgot:\t%v", i, callbackPrint(gotToken)))
+			diffStrs = append(diffStrs, fmt.Sprintf("[%d]\texp:\t%v", i, callbackPrint(expected[i])))
 		}
 	}
 
 	if failure {
 		strGot, strExpect := strings.Builder{}, strings.Builder{}
+		logger.EmitStdout()
 		for i, expectedToken := range expected {
 			var gotToken Token
 			if i >= len(got) {
@@ -130,8 +140,8 @@ func assertInternal(
 		}
 
 		t.Errorf("Whole string diff:")
-		t.Errorf("got:\t\t%v", strGot.String())
-		t.Errorf("expected:\t%v", strExpect.String())
+		t.Errorf("got:\t%v", strGot.String())
+		t.Errorf("exp:\t%v", strExpect.String())
 		t.Fail()
 	}
 }
@@ -143,4 +153,14 @@ func contains(arr []int, val int) bool {
 		}
 	}
 	return false
+}
+
+func assertErrors(t *testing.T, logger internal.Logger, eexp, egot error, in string, out []Token) {
+	if !errors.Is(egot, eexp) {
+		logger.EmitStdout()
+		t.Errorf("expected error %q, got %v", eexp, egot)
+		if len(out) > 0 {
+			t.Errorf("values for reference: in=%q, out=%v", in, out)
+		}
+	}
 }

@@ -12,6 +12,72 @@ func isIdentifierPart(r rune) bool {
 
 var keywords = internal.MapInvert(ReservedWordNames)
 
+func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
+	tmpCursor := cursor
+	if char, err := s.peekN(*cursor); err != nil || char != '\\' {
+		s.logger.Debug("[%d:%d] scanIdentifier:escape: invalid first character, backtracking: ", s.idxHead, *cursor)
+		cursor = tmpCursor // backtracks
+		return false
+	}
+	// 0: current token is \\
+	s.logger.Debug("[%d:%d] scanIdentifier:escape: \\", s.idxHead, *cursor)
+	// consume the escape
+	*cursor++
+
+	char, err := s.peekN(*cursor)
+	if err != nil {
+		// can't EOF here, because we already consumed the escape
+		s.logger.Debug("[%d:%d] scanIdentifier:escape: EOF: ", s.idxHead, *cursor)
+		cursor = tmpCursor // backtracks
+		return false
+	}
+
+	switch char {
+	case 'u':
+		// 1: current token is u
+		s.logger.Debug("[%d:%d] scanIdentifier:unicode: u", s.idxHead, *cursor)
+		// consume u
+		*cursor++
+
+		// 2-5: consume 4 hex digits
+		for i := 0; i < 4; i++ {
+			char, err := s.peekN(*cursor)
+			s.logger.Debug("[%d:%d] scanIdentifier:unicode: %c", s.idxHead, *cursor, char)
+			if err != nil || !isHexDigit(char) {
+				s.logger.Debug("[%d:%d] scanIdentifier:invalid unicode escape sequence: %c", s.idxHead, *cursor, char)
+				cursor = tmpCursor // backtracks
+				return false
+			}
+			*cursor++
+		}
+	case 'x':
+		// 1: current token is x
+		s.logger.Debug("[%d:%d] scanIdentifier:hex: x", s.idxHead, *cursor)
+		// consume x
+		*cursor++
+
+		char, err := s.peekN(*cursor)
+		// 2: consume the next hexadecimal digit
+		if err != nil || !isHexDigit(char) {
+			s.logger.Debug("[%d:%d] scanIdentifier:hex:invalid hex escape sequence: %c", s.idxHead, *cursor, char)
+			cursor = tmpCursor // backtracks
+			return false
+		}
+	default:
+		// 1: not a valid numerical escape sequence
+		s.logger.Debug("[%d:%d] scanIdentifier:escape:invalid numerical escape sequence: %c", s.idxHead, *cursor, char)
+		cursor = tmpCursor // backtracks
+		return false
+	}
+
+	// if we got here, we need to back track the cursor by 1
+	// because it would have gone past the end of the unicode in the last iteration,
+	// before failing the loop condition.
+	*cursor--
+	s.logger.Debug("[%d:%d] scanIdentifier:unicode:accepted", s.idxHead, *cursor)
+	return true
+}
+
 // Identifiers
 //
 // https://262.ecma-international.org/#sec-names-and-keywords
@@ -20,52 +86,35 @@ func (s *Scanner) scanIdentifiers() {
 		return
 	}
 
-	s.advance()
-	for isIdentifierPart(s.peek()) {
-		if s.idxHead == len(s.src)-1 /* if EOF */ {
+	// consume the start, as identifierStart != identifierPart
+	s.advanceBy(1)
+	cursor := 0
+	// consume each valid identifier character up until the first invalid one
+	for {
+		char, err := s.peekN(cursor)
+		if err != nil || !isIdentifierPart(char) {
 			break
 		}
-		headNext := s.peekAhead(1)
-		if s.peek() == '\\' && headNext == 'u' {
-			if s.idxHead+4 > len(s.src)-1 {
-				// invalid unicode escape
-				break
-			} else if !isHexDigit(s.peekAhead(2)) || !isHexDigit(s.peekAhead(3)) || !isHexDigit(s.peekAhead(4)) || !isHexDigit(s.peekAhead(5)) {
-				// invalid unicode escape
-				break
-			}
+		if char == '\\' && !s.acceptEscapedUnicode(&cursor) {
+			break
 		}
-
-		s.logger.Debug("%d: (scanIdentifier): %c", s.idxHead, s.peek())
-		s.advance()
+		s.logger.Debug("[%d:%d] scanIdentifier: %c", s.idxHead, cursor, char)
+		cursor++
 	}
 
-	// we reach here when s.idxHead is **not** a valid identifier part
-	// meaning that s.peek() is not part of the identifier
-	s.logger.Debug("%d: (scanIdentifier): finished parsing %c", s.idxHead, s.peek())
-	if !isIdentifierPart(s.peek()) {
-		s.idxHead--
-	} else {
-		s.logger.Debug("%d: (scanIdentifier): finished parsing but idxHead was still valid: %c", s.idxHead, s.peek())
-	}
-
-	var upper, lower int
-	lower = s.idxHeadStart
-	upper = s.idxHeadStart + s.idxHead // collect final quote
-	if upper >= len(s.src) {
-		upper = len(s.src)
-	}
+	// we may have left the loop because we hit EOF
+	lower, upper := s.idxHeadStart, s.idxHead+cursor
+	s.idxHead = upper
 
 	// Try to parse it as a reserved word
 	candidate := s.src[lower:upper]
 	if token, ok := keywords[candidate]; ok {
-		s.addToken(token, candidate)
+		s.addTokenSafe(token)
 		return
 	}
 
-	s.logger.Info("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
-	// s.logger.Debug("%d: (scanIdentifier) lowerBound:%d upperBound:%d literal:%s", s.idxHead, lower, upper, s.src[lower:upper])
-	s.addToken(TIdentifier, s.src[s.idxHeadStart:upper])
+	s.logger.Info("scanIdentifier: lowerBound:%d upperBound:%d literal:%s", lower, upper, candidate)
+	s.addTokenSafe(TIdentifier)
 }
 
 func isLegalStringLiteralIntermediate(r rune) bool {

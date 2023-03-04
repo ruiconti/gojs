@@ -1,6 +1,10 @@
 package lex
 
-import "testing"
+import (
+	"testing"
+
+	gojs "github.com/ruiconti/gojs/internal"
+)
 
 // String Literals
 //
@@ -37,19 +41,26 @@ func TestScanString_DoubleString_1P(t *testing.T) {
 	// | <LS>
 	// | <PS>
 	// t.Skip()
-	src := `"   " "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "0123456789" "!" "#" "\na\n\n$\n\r\n\t\n\v\n\f"`
+	src := `"" "   " "abcdefghijklmnopqrstuvwxyz" "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "0123456789" "!" "#" "\na\n\n$\n\r\n\t\n\v\n\f"`
 	expected := []Token{
-		{T: TStringLiteral, Lexeme: `"   "`, Literal: `""`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"abcdefghijklmnopqrstuvwxyz"`, Literal: `"abcdefghijklmnopqrstuvwxyz"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"ABCDEFGHIJKLMNOPQRSTUVWXYZ"`, Literal: `"ABCDEFGHIJKLMNOPQRSTUVWXYZ"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"0123456789"`, Literal: `"0123456789"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"!"`, Literal: `"!"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"#"`, Literal: `"#"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"\na\n\n$\n\r\n\t\n\v\n\f"`, Literal: `"\na\n\n$\n\r\n\t\n\v\n\f"`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: ``, Literal: ``, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `   `, Literal: `   `, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `abcdefghijklmnopqrstuvwxyz`, Literal: `abcdefghijklmnopqrstuvwxyz`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `ABCDEFGHIJKLMNOPQRSTUVWXYZ`, Literal: `ABCDEFGHIJKLMNOPQRSTUVWXYZ`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `0123456789`, Literal: `0123456789`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `!`, Literal: `!`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `#`, Literal: `#`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\na\n\n$\n\r\n\t\n\v\n\f`, Literal: `\na\n\n$\n\r\n\t\n\v\n\f`, Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		logger.EmitStdout()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 // DoubleStringCharacter ::
@@ -86,17 +97,22 @@ func TestScanString_DoubleString_1P(t *testing.T) {
 // | u Hex4Digits
 // | u{ CodePoint }
 func TestScanString_DoubleString_Escapes(t *testing.T) {
-	src := `"\\\\\\" "\"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z" "\00\10\20\30\40\50\60\70\80\90" "\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0" "\u0000\u0001\u00005\u99999"`
+	src := `"\\\\" "\"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z" "\00\01\02\03\04\05\06\07\08\09" "\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0" "\u0000\u0001\u0005\u9999"`
 	expected := []Token{
-		{T: TStringLiteral, Lexeme: `"\\\\\\"`, Literal: `"\\\\\\"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"\"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z"`, Literal: `"\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"\00\10\20\30\40\50\60\70\80\90"`, Literal: `"\00\10\20\30\40\50\60\70\80\90"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0"`, Literal: `"\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0"`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `"\u0000\u0001\u00005\u99999"`, Literal: `"\u0000\u0001\u00005\u99999"`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\\\\`, Literal: `\\\\`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z`, Literal: `\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\00\01\02\03\04\05\06\07\08\09`, Literal: `\00\01\02\03\04\05\06\07\08\09`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0`, Literal: `\x10\x20\x30\x40\x50\x60\x70\x80\x90\xA0\xB0\xC0\xD0\xE0\xF0`, Line: 0, Column: 0},
+		{T: TStringLiteral_DoubleQuote, Lexeme: `\u0000\u0001\u0005\u9999`, Literal: `\u0000\u0001\u0005\u9999`, Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		logger.EmitStdout()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 // SingleStringCharacters ::
@@ -109,17 +125,22 @@ func TestScanString_DoubleString_Escapes(t *testing.T) {
 // | \ EscapeSequence
 // | LineContinuation
 func TestStringLiteral_Single(t *testing.T) {
-	src := `'   ' '\\\\\\\x01' '\\\\\\\u01' '"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z' '' '\u0000\u0001\u00005\u99999'`
+	src := `'   ' '\\\\\\\x01' '\\\\\\\u011a' '"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z' '' '\u0000\u0001\u00005\u99999'`
 
 	expected := []Token{
-		{T: TStringLiteral, Lexeme: `'   '`, Literal: `'   '`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `'\\\\\\\x01'`, Literal: `\\\\\\\x01'`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `'\\\\\\\u01'`, Literal: `\\\\\\\u01'`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `'"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z'`, Literal: `'"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z'`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `''`, Literal: `''`, Line: 0, Column: 0},
-		{T: TStringLiteral, Lexeme: `'\u0000\u0001\u00005\u99999'`, Literal: `'\u0000\u0001\u00005\u99999'`, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: `   `, Literal: `   `, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: `\\\\\\\x01`, Literal: `\\\\\\\x01`, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: `\\\\\\\u011a`, Literal: `\\\\\\\u011a`, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: `"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z`, Literal: `"\'\\a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\v\w\y\z`, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: ``, Literal: ``, Line: 0, Column: 0},
+		{T: TStringLiteral_SingleQuote, Lexeme: `\u0000\u0001\u00005\u99999`, Literal: `\u0000\u0001\u00005\u99999`, Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		logger.EmitStdout()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }

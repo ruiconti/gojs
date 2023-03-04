@@ -2,15 +2,18 @@ package lex
 
 import (
 	"testing"
+
+	gojs "github.com/ruiconti/gojs/internal"
 )
 
 func TestScanSimplePunctuators(t *testing.T) {
-	src := `;():{}[];,~`
+	src := `;()~:{}[];,~`
 
 	expected := []Token{
 		{T: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
 		{T: TLeftParen, Lexeme: "(", Literal: nil, Line: 0, Column: 0},
 		{T: TRightParen, Lexeme: ")", Literal: nil, Line: 0, Column: 0},
+		{T: TTilde, Lexeme: "~", Literal: nil, Line: 0, Column: 0},
 		{T: TColon, Lexeme: ":", Literal: nil, Line: 0, Column: 0},
 		{T: TLeftBrace, Lexeme: "{", Literal: nil, Line: 0, Column: 0},
 		{T: TRightBrace, Lexeme: "}", Literal: nil, Line: 0, Column: 0},
@@ -21,9 +24,14 @@ func TestScanSimplePunctuators(t *testing.T) {
 		{T: TTilde, Lexeme: "~", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		scanner.logger.EmitStdout()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDoublePunctuators_GThanLThan(t *testing.T) {
@@ -41,9 +49,14 @@ func TestScanDoublePunctuators_GThanLThan(t *testing.T) {
 		{T: TLessThanEqual, Lexeme: "<=", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		scanner.logger.EmitStdout()
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDoublePunctuators_BangEq(t *testing.T) {
@@ -62,12 +75,14 @@ func TestScanDoublePunctuators_BangEq(t *testing.T) {
 		{T: TArrow, Lexeme: "=>", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, err := scanner.Scan()
 	if err != nil {
+		scanner.logger.EmitStdout()
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDoublePunctuators_AndOr(t *testing.T) {
@@ -83,9 +98,10 @@ func TestScanDoublePunctuators_AndOr(t *testing.T) {
 		{T: TLogicalOrAssign, Lexeme: "||=", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDoublePunctuators_PlusMinus(t *testing.T) {
@@ -99,9 +115,10 @@ func TestScanDoublePunctuators_PlusMinus(t *testing.T) {
 		{T: TMinusAssign, Lexeme: "-=", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 }
 func TestScanDoublePunctuators_StarSlash(t *testing.T) {
 	src := `* *= / /=`
@@ -112,7 +129,8 @@ func TestScanDoublePunctuators_StarSlash(t *testing.T) {
 		{T: TSlashAssign, Lexeme: "/=", Literal: nil, Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 }

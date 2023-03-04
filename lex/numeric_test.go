@@ -1,8 +1,9 @@
 package lex
 
 import (
-	"errors"
 	"testing"
+
+	gojs "github.com/ruiconti/gojs/internal"
 )
 
 // Numeric Literals
@@ -57,12 +58,14 @@ func TestScanDigits_DecimalLiterals_Prod1(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0.E-50", Literal: "0.E-50", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, err := scanner.Scan()
 	if err != nil {
+		logger.EmitStdout()
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 
 	// NonOctalDecimalIntegerLiteral ::
 	// | 0 NonOctalDigit
@@ -147,12 +150,11 @@ func TestScanDigits_DecimalLiterals_FirstProd_Err(t *testing.T) {
 		"00A01",
 	}
 
-	for i, s := range src {
-		scanner := NewScanner(s, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	for _, s := range src {
+		scanner := NewScanner(s, logger)
 		got, err := scanner.Scan()
-		if !errors.Is(err, errNoLiteralAfterNumber) {
-			t.Errorf("src:%s got:%v expected error %q, got %v", src[i], got, errNoLiteralAfterNumber, err)
-		}
+		assertErrors(t, logger, errNoLiteralAfterNumber, err, s, got)
 	}
 
 }
@@ -168,23 +170,19 @@ func TestScanDigits_DecimalLiterals_Prod2_Err(t *testing.T) {
 		"10_",
 		"10_.",
 		"10e.",
-		"10+",
-		"10-",
 		"._3",
 		".+3",
 		".-3",
-		"10-0",
-		"10+0",
 		"10e++3",
 		"10e--3", // TODO: That's a bad case -- 10-- is legal and should leave the digit parser
 	}
 
-	for i, s := range src {
-		scanner := NewScanner(s, defaultLogger)
-		got, err := scanner.Scan()
-		if !errors.Is(err, errDigitExpected) {
-			t.Errorf("src:%s got:%v expected error %q, got %v", src[i], got, errNoLiteralAfterNumber, err)
-		}
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	for _, s := range src {
+		scanner := NewScanner(s, logger)
+		got, egot := scanner.Scan()
+		eexp := errUnexpectedToken
+		assertErrors(t, logger, eexp, egot, s, got)
 	}
 
 }
@@ -202,9 +200,13 @@ func TestScanDigits_DecimalLiterals_Prod2(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: ".5E+50", Literal: ".5E+50", Line: 0, Column: 0},
 		{T: TNumericLiteral, Lexeme: ".9E-50", Literal: ".9E-50", Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 func TestScanDigits_DecimalLiterals_Prod3(t *testing.T) {
 	// DecimalIntegerLiteral ::
@@ -222,12 +224,13 @@ func TestScanDigits_DecimalLiterals_Prod3(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "007654321e+1", Literal: "007654321e+1", Line: 0, Column: 0},
 		{T: TNumericLiteral, Lexeme: "000e+1", Literal: "000e+1", Line: 0, Column: 0},
 	}
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, err := scanner.Scan()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDigits_HexIntegerLiteral(t *testing.T) {
@@ -243,9 +246,10 @@ func TestScanDigits_HexIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0xB_AAB_445", Literal: "0xB_AAB_445", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
 	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	assertLexemes(t, logger, got, expected)
 
 	// TODO: Error handling: make sure that we only accept one period while parsing the number
 	// e.g:
@@ -274,9 +278,13 @@ func TestScanDigits_DecimalBigIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "1_923_921_839_1273n", Literal: "1_923_921_839_1273n", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDigits_BinaryIntegerLiteral(t *testing.T) {
@@ -302,9 +310,13 @@ func TestScanDigits_BinaryIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0b0100_0101_0110", Literal: "0b0100_0101_0110", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }
 
 func TestScanDigits_OctalIntegerLiteral(t *testing.T) {
@@ -329,7 +341,11 @@ func TestScanDigits_OctalIntegerLiteral(t *testing.T) {
 		{T: TNumericLiteral, Lexeme: "0o1234_5672_5012", Literal: "0o1234_5672_5012", Line: 0, Column: 0},
 	}
 
-	scanner := NewScanner(src, defaultLogger)
-	got, _ := scanner.Scan()
-	assertLexemes(t, got, expected)
+	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
+	scanner := NewScanner(src, logger)
+	got, err := scanner.Scan()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertLexemes(t, logger, got, expected)
 }

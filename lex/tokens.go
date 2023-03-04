@@ -18,9 +18,11 @@ const (
 
 	// Literals
 	TNumericLiteral
-	TStringLiteral
+	TStringLiteral_SingleQuote
+	TStringLiteral_DoubleQuote
 	TRegularExpressionLiteral
 	TTemplateLiteral
+	TUnknown
 
 	// Other
 	TAnd
@@ -121,11 +123,12 @@ const (
 )
 
 var LiteralNames = map[TokenType]string{
-	TIdentifier:               "Identifier",
-	TNumericLiteral:           "NumericLiteral",
-	TStringLiteral:            "StringLiteral",
-	TRegularExpressionLiteral: "RegularExpressionLiteral",
-	TTemplateLiteral:          "TemplateLiteral",
+	TIdentifier:                "Identifier",
+	TNumericLiteral:            "NumericLiteral",
+	TStringLiteral_SingleQuote: "StringLiteral_SimpleQuote",
+	TStringLiteral_DoubleQuote: "StringLiteral_DoubleQuote",
+	TRegularExpressionLiteral:  "RegularExpressionLiteral",
+	TTemplateLiteral:           "TemplateLiteral",
 }
 
 var ReservedWordNames = map[TokenType]string{
