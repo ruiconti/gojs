@@ -22,9 +22,11 @@ var errInvalidNumericEscape = fmt.Errorf("invalid numeric escape")
 type Scanner struct {
 	// source string being scanned
 	src string
-	// offset of the current index of the current lexeme
+	// offset of the current index of the current char
 	idxHead int
-	// offset of the beginning of the current lexeme
+	// offset of the last index of the current char
+	idxHeadLast int
+	// offset of the beginning of the current char
 	idxHeadStart int
 	// token slice
 	tokens []Token
@@ -52,6 +54,7 @@ func NewScanner(src string, logger *gojs.SimpleLogger) *Scanner {
 }
 
 func (s *Scanner) advanceBy(n int) {
+	s.idxHeadLast = s.idxHead
 	s.idxHead += n
 }
 
@@ -136,8 +139,15 @@ func isNewline(r rune) bool {
 
 func (s *Scanner) Scan() ([]Token, error) {
 	s.logger.Debug("SRC:\n%s\n\n", s.src)
+	defer func() {
+		stack := recover()
+		if stack != nil {
+			s.prettyPrintScan()
+			s.logger.EmitStdout()
+			panic(stack)
+		}
+	}()
 
-	var lastHead rune
 	for s.idxHead < len(s.src) {
 		s.logger.Debug("[%d] mainloop: %c", s.idxHead, s.peek())
 		s.prettyPrintScan()
@@ -145,67 +155,60 @@ func (s *Scanner) Scan() ([]Token, error) {
 		head := s.peek()
 
 		// check whether we're in an endless loop
-		if lastHead == head {
+		if s.idxHead > 0 && s.idxHeadLast == s.idxHead {
 			s.logger.Debug("infinite loop found, aborting...\n\n")
 			return s.tokens, errInfiniteLoop
-		} else {
-			lastHead = head
 		}
 
 		// identifiers
 		if isIdentifierStart(head) {
-			s.scanIdentifiers()
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
-		}
-		if s.idxHead >= len(s.src) {
-			break
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
+			accept, errs := s.scanIdentifiers()
+			if len(errs) > 0 {
+				return []Token{}, errs[0]
+			}
+			if accept {
+				continue
+			}
 		}
 
-		// literals
+		// string literals
 		if s.peek() == '"' || s.peek() == '\'' {
-			s.scanStringLiteral()
-		}
-		if s.idxHead >= len(s.src) {
-			// done!
-			break
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
+			accept, errs := s.scanStringLiteral()
+			if len(errs) > 0 {
+				return []Token{}, errs[0]
+			}
+			if accept {
+				continue
+			}
 		}
 
 		// template literals
 		if s.peek() == '`' {
+			continue
+			// TBI
 			s.scanTemplateLiteral()
-		}
-		if s.idxHead >= len(s.src) {
-			// done!
-			break
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
 		}
 
 		// numeric literals
 		if isDecimalDigit(head) || head == '.' {
-			s.scanDigits()
-		}
-		if s.idxHead >= len(s.src) {
-			// done!
-			break
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
+			accept, errs := s.scanDigits()
+			if len(errs) > 0 {
+				return []Token{}, errs[0]
+			}
+			if accept {
+				continue
+			}
 		}
 
 		// punctuators
 		if isPunctuation(rune(head)) {
-			s.scanPunctuators()
-		}
-		if s.idxHead >= len(s.src) {
-			// done!
-			break
-		} else if s.hasErrors() {
-			return []Token{}, s.errors[0]
+			accept, errs := s.scanPunctuators()
+			if len(errs) > 0 {
+				return []Token{}, errs[0]
+			}
+			if accept {
+				continue
+			}
 		}
 
 		// we should only advance the head if we didn't match anything

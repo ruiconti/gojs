@@ -159,7 +159,8 @@ func (s *Scanner) prettyPrintScan() {
 	s.logger.Debug("%s", cursor)
 }
 
-func (s *Scanner) scanDigits() {
+func (s *Scanner) scanDigits() (bool, []error) {
+	errs := []error{}
 	char := s.peek()
 	charNext, err := s.peekN(1)
 
@@ -194,17 +195,17 @@ func (s *Scanner) scanDigits() {
 		if err != nil && (charNext == '_' || charNext == 'e' || charNext == 'E' || charNext == '+' || charNext == '-') {
 			// not a valid number and illegal syntax
 			// maybe there's a better place to capture it, but we're doing it here for now
-			s.errors = append(s.errors, err)
-			return
+			errs = append(errs, err)
+			return false, errs
 		} else if err != nil {
 			// not a valid number starting with . but can be valid syntax
 			// e.g member access
-			return
+			return false, errs
 		}
 		numberType = LiteralDecimal
 		// can be a valid number
 	} else {
-		return
+		return false, errs
 	}
 
 	cursor := 0
@@ -304,11 +305,12 @@ func (s *Scanner) scanDigits() {
 
 	if len(errors) > 0 {
 		s.idxHead = tmpCursor // backtracks
-		s.errors = append(s.errors, errors...)
+		errs = append(errs, errors...)
 		s.logger.Debug("%d: (scanDigits) errors found:%v", s.idxHead, errors)
-		return
+		return false, errs
 	}
 
 	s.idxHead = s.idxHead + cursor
 	s.addTokenSafe(TNumericLiteral)
+	return true, errs
 }

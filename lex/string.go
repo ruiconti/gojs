@@ -41,7 +41,8 @@ func (s *Scanner) rejectEscape(c *int) error {
 	return nil
 }
 
-func (s *Scanner) scanStringLiteral() {
+func (s *Scanner) scanStringLiteral() (bool, []error) {
+	errs := []error{}
 	var strType StringLiteralType
 	char := s.peek()
 
@@ -50,7 +51,7 @@ func (s *Scanner) scanStringLiteral() {
 	} else if char == '\'' {
 		strType = SingleQuote
 	} else {
-		return
+		return false, errs
 	}
 
 	// consume the quote
@@ -63,8 +64,8 @@ func (s *Scanner) scanStringLiteral() {
 		char, err := s.peekN(cursor)
 		if err != nil {
 			// we found an EOF in mid-string, so this is an error
-			s.errors = append(s.errors, errUnterminatedStringLiteral)
-			return
+			errs = append(errs, errUnterminatedStringLiteral)
+			return false, errs
 		}
 
 		s.logger.Debug("[%d:%d] scanStringLiteral: %c", s.idxHead, cursor, char)
@@ -74,8 +75,8 @@ func (s *Scanner) scanStringLiteral() {
 			// first try to find escape sequences
 			escapeErr := s.rejectEscape(&cursor)
 			if escapeErr != nil {
-				s.errors = append(s.errors, escapeErr)
-				return
+				errs = append(errs, escapeErr)
+				return false, errs
 			}
 		}
 
@@ -110,4 +111,6 @@ func (s *Scanner) scanStringLiteral() {
 
 	// walk the cursor past the end quote
 	s.advanceBy(1)
+
+	return true, errs
 }

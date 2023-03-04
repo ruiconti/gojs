@@ -11,14 +11,15 @@ func isPunctuation(r rune) bool {
 	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == '~'
 }
 
-func (s *Scanner) scanPunctuators() {
+func (s *Scanner) scanPunctuators() (bool, []error) {
 	token, c, err := s.innerScanPunctuators(s.peek())
 	if err != nil {
-		return
+		return false, []error{err}
 	}
 
 	s.advanceBy(c)
 	s.addTokenSafe(token)
+	return true, []error{}
 }
 
 func (s *Scanner) innerScanPunctuators(char rune) (TokenType, int, error) {

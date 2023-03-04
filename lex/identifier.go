@@ -13,6 +13,7 @@ func isIdentifierPart(r rune) bool {
 var keywords = internal.MapInvert(ReservedWordNames)
 
 func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
+	errs := []error{}
 	tmpCursor := cursor
 	if char, err := s.peekN(*cursor); err != nil || char != '\\' {
 		s.logger.Debug("[%d:%d] scanIdentifier:escape: invalid first character, backtracking: ", s.idxHead, *cursor)
@@ -29,6 +30,7 @@ func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
 		// can't EOF here, because we already consumed the escape
 		s.logger.Debug("[%d:%d] scanIdentifier:escape: EOF: ", s.idxHead, *cursor)
 		cursor = tmpCursor // backtracks
+		errs = append(errs, err)
 		return false
 	}
 
@@ -46,6 +48,7 @@ func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
 			if err != nil || !isHexDigit(char) {
 				s.logger.Debug("[%d:%d] scanIdentifier:invalid unicode escape sequence: %c", s.idxHead, *cursor, char)
 				cursor = tmpCursor // backtracks
+				errs = append(errs, err)
 				return false
 			}
 			*cursor++
@@ -61,6 +64,7 @@ func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
 		if err != nil || !isHexDigit(char) {
 			s.logger.Debug("[%d:%d] scanIdentifier:hex:invalid hex escape sequence: %c", s.idxHead, *cursor, char)
 			cursor = tmpCursor // backtracks
+			errs = append(errs, err)
 			return false
 		}
 	default:
@@ -81,9 +85,10 @@ func (s *Scanner) acceptEscapedUnicode(cursor *int) bool {
 // Identifiers
 //
 // https://262.ecma-international.org/#sec-names-and-keywords
-func (s *Scanner) scanIdentifiers() {
+func (s *Scanner) scanIdentifiers() (bool, []error) {
+	errs := []error{}
 	if !isIdentifierStart(s.peek()) {
-		return
+		return false, errs
 	}
 
 	// consume the start, as identifierStart != identifierPart
@@ -110,11 +115,12 @@ func (s *Scanner) scanIdentifiers() {
 	candidate := s.src[lower:upper]
 	if token, ok := keywords[candidate]; ok {
 		s.addTokenSafe(token)
-		return
+		return true, errs
 	}
 
 	s.logger.Info("scanIdentifier: lowerBound:%d upperBound:%d literal:%s", lower, upper, candidate)
 	s.addTokenSafe(TIdentifier)
+	return true, errs
 }
 
 func isLegalStringLiteralIntermediate(r rune) bool {
