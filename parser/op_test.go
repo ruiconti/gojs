@@ -1,35 +1,84 @@
 package parser
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/ruiconti/gojs/internal"
 	"github.com/ruiconti/gojs/lex"
 )
 
-func TestUnaryOp_Delete(t *testing.T) {
-	src := "delete foo"
-	got := Parse(src)
-	exp := &ExprRootNode{
-		children: []AstNode{
-			&ExprUnaryOp{
-				operand: &ExprIdentifierReference{
-					reference: "foo",
+func TestUnaryOp(t *testing.T) {
+	t.Run("simple identifier reference", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UnaryOperators {
+			operatorName := lex.ResolveName(operator)
+			src := fmt.Sprintf("%s foo", operatorName)
+			got := Parse(logger, src)
+			exp := &ExprRootNode{
+				children: []AstNode{
+					&ExprUnaryOp{
+						operand: &ExprIdentifierReference{
+							reference: "foo",
+						},
+						operator: operator,
+					},
 				},
-				operator: lex.TDelete,
-			},
-		},
-	}
-	expt := exp.children[0].(*ExprUnaryOp)
-	gott := got.children[0].(*ExprUnaryOp)
-	if expt.operator != gott.operator {
-		t.Errorf("Expected %s, got %s", lex.ReservedWordNames[expt.operator], lex.ReservedWordNames[gott.operator])
-		t.Fail()
-	}
+			}
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
 
-	expop := expt.operand.(*ExprIdentifierReference)
-	gotop := gott.operand.(*ExprIdentifierReference)
-	if expop.reference != gotop.reference {
-		t.Errorf("Expected %s, got %s", expop.reference, gotop.reference)
-		t.Fail()
-	}
+	t.Run("recursive identifier reference", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UnaryOperators {
+			operatorName := lex.ResolveName(operator)
+			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
+			got := Parse(logger, src)
+			exp := &ExprRootNode{
+				children: []AstNode{
+					&ExprUnaryOp{
+						operand: &ExprUnaryOp{
+							operand: &ExprUnaryOp{
+								operand: &ExprUnaryOp{
+									operand: &ExprIdentifierReference{
+										reference: "bar",
+									},
+									operator: operator,
+								},
+								operator: operator,
+							},
+							operator: operator,
+						},
+						operator: operator,
+					},
+				},
+			}
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
+
+	t.Run("simple literal", func(t *testing.T) {
+	})
+}
+
+func TestUpdateExpr(t *testing.T) {
+	t.Run("simple identifier reference", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UpdateOperators {
+			src := fmt.Sprintf("%s foo", lex.ResolveName(operator))
+			exp := &ExprRootNode{
+				children: []AstNode{
+					&ExprUnaryOp{
+						operand: &ExprIdentifierReference{
+							reference: "foo",
+						},
+						operator: operator,
+					},
+				},
+			}
+			got := Parse(logger, src)
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
 }

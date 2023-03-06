@@ -3,122 +3,39 @@ package parser
 import (
 	"fmt"
 	"testing"
+
+	"github.com/ruiconti/gojs/internal"
 )
 
-func CompareRootChildren(t *testing.T, src string, got, expected []AstNode) {
-	failed := false
-	errs := []string{}
-	gots := []string{}
-	exps := []string{}
-	if len(got) != len(expected) {
-		errs = append(errs, fmt.Sprintf("Expected %d children, got %d", len(expected), len(got)))
-		failed = true
-	}
-	// iterating over expected
-	for i := 0; i < len(expected); i++ {
-		iexp := expected[i]
-		exps = append(exps, fmt.Sprintf("%v", iexp))
-
-		var igot AstNode
-		if i >= len(got) {
-			igot = &ExprElision{}
-		} else {
-			igot = got[i]
-		}
-		if iexp.Type() != igot.Type() || iexp.Source() != igot.Source() {
-			errs = append(errs, fmt.Sprintf("%d: Expected %s, got %s", i, iexp, igot))
-			failed = true
-		}
-	}
-	// iterating over got
-	for i := 0; i < len(got); i++ {
-		igot := got[i]
-		gots = append(gots, fmt.Sprintf("%v", igot))
-
-		var iexp AstNode
-		if i >= len(expected) {
-			iexp = &ExprElision{}
-		} else {
-			iexp = expected[i]
-		}
-		if iexp.Type() != igot.Type() || iexp.Source() != igot.Source() {
-			errs = append(errs, fmt.Sprintf("%d: Expected %s, got %s", i, iexp, igot))
-			failed = true
-		}
-	}
-	if failed {
-		t.Errorf("Error while parsing: %s", src)
-		t.Errorf("Found differences (index: expected, got):")
-		for _, err := range errs {
-			t.Errorf(err)
-		}
-		t.Errorf("got:")
-		for _, g := range gots {
-			t.Errorf(g)
-		}
-		t.Errorf("expected:")
-		for _, e := range exps {
-			t.Errorf(e)
-		}
-		t.Fail()
-	}
+func PrettyPrintExpr(t *testing.T, expr AstNode) {
+	fmt.Printf("%s", expr.PrettyPrint())
 }
 
-func CompareRootChildrenPointer(t *testing.T, src string, got, expected []*AstNode) {
-	failed := false
-	errs := []string{}
-	gots := []string{}
-	exps := []string{}
-	if len(got) != len(expected) {
-		errs = append(errs, fmt.Sprintf("Expected %d children, got %d", len(expected), len(got)))
-		failed = true
+func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected AstNode) {
+	failure := false
+	var errs []string
+	if got.Type() != expected.Type() {
+		failure = true
+		errs = append(errs, fmt.Sprintf("Type differs"))
+		errs = append(errs, fmt.Sprintf("Expected %s, got %s", expected.Type(), got.Type()))
 	}
-	// iterating over expected
-	for i := 0; i < len(expected); i++ {
-		iexp := expected[i]
-		exps = append(exps, fmt.Sprintf("%v", iexp))
 
-		var igot AstNode
-		if i >= len(got) {
-			igot = &ExprElision{}
-		} else {
-			igot = *got[i]
-		}
-		if (*iexp).Type() != (igot).Type() || (*iexp).Source() != (igot).Source() {
-			errs = append(errs, fmt.Sprintf("%d: Expected %s, got %s", i, *iexp, igot))
-			failed = true
-		}
+	sgot := got.PrettyPrint()
+	sexp := expected.PrettyPrint()
+	if sexp != sgot {
+		failure = true
+		errs = append(errs, fmt.Sprintf("PrettyPrint differs"))
+		errs = append(errs, fmt.Sprintf("Expected:"))
+		errs = append(errs, fmt.Sprint(sexp))
+		errs = append(errs, fmt.Sprintf("Got:"))
+		errs = append(errs, fmt.Sprint(sgot))
 	}
-	// iterating over got
-	for i := 0; i < len(got); i++ {
-		igot := got[i]
-		gots = append(gots, fmt.Sprintf("%v", igot))
 
-		var iexp AstNode
-		if i >= len(expected) {
-			iexp = &ExprElision{}
-		} else {
-			iexp = *expected[i]
-		}
-		if iexp.Type() != (*igot).Type() || iexp.Source() != (*igot).Source() {
-			errs = append(errs, fmt.Sprintf("%d: Expected %s, got %s", i, iexp, *igot))
-			failed = true
-		}
-	}
-	if failed {
-		t.Errorf("Error while parsing: %s", src)
-		t.Errorf("Found differences (index: expected, got):")
+	if failure {
+		logger.EmitStdout()
 		for _, err := range errs {
 			t.Errorf(err)
 		}
-		t.Errorf("got:")
-		for _, g := range gots {
-			t.Errorf(g)
-		}
-		t.Errorf("expected:")
-		for _, e := range exps {
-			t.Errorf(e)
-		}
-		t.Fail()
+		t.FailNow()
 	}
 }

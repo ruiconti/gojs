@@ -17,6 +17,7 @@ const (
 type AstNode interface {
 	Source() string
 	Type() ExprType
+	PrettyPrint() string
 }
 
 type Parser struct {
@@ -35,7 +36,11 @@ func (e *ExprElision) Source() string {
 	return ""
 }
 
-func (p *Parser) LookAhead(n int) (lex.Token, error) {
+func (p *Parser) peek() lex.Token {
+	return p.seq[p.cursor]
+}
+
+func (p *Parser) peekN(n int) (lex.Token, error) {
 	if p.cursor+n >= len(p.seq) {
 		return lex.Token{}, errors.New("EOF")
 	}
@@ -50,8 +55,7 @@ func NewParser(seq []lex.Token, logger *internal.SimpleLogger) *Parser {
 	}
 }
 
-func Parse(src string) *ExprRootNode {
-	logger := internal.NewSimpleLogger(internal.ModeDebug)
+func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
 	scanner := lex.NewScanner(src, logger)
 	tokens, err := scanner.Scan()
 	if err != nil {
@@ -67,18 +71,20 @@ func (p *Parser) parseTokens() *ExprRootNode {
 	rootNode := &ExprRootNode{
 		children: []AstNode{},
 	}
-	p.logger.Debug("parser:tokens::")
-	for _, token := range p.seq {
-		p.logger.Debug("parser:token: %v", token)
-	}
-	for {
-		token, err := p.LookAhead(0)
-		if err != nil {
-			p.logger.Error("parser:loop: %s", err.Error())
-			break
+	p.logger.Debug("PARSER::")
+	defer func() {
+		stack := recover()
+		if stack != nil {
+			p.logger.EmitStdout()
+			panic(stack)
 		}
-		// EOF
-		if token.T == lex.TEOF {
+	}()
+
+	for {
+		token, err := p.peekN(p.cursor)
+		p.logger.Debug("[%d] parser:loop: %v", p.cursor, token)
+		if err != nil {
+			p.logger.Error("[%d] parser:loop: %s", p.cursor, err.Error())
 			break
 		}
 		// id | await | yield
@@ -94,46 +100,31 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		}
 		// [
 		if token.T == lex.TLeftBracket {
-			// TODO: [ could also be a property access
-			// consumes '['
-			p.logger.Debug("parsing [: %d: %v", p.cursor, token)
-			tmpCursor := p.cursor
-			tmpCursor++
-
-			next, err := p.LookAhead(tmpCursor)
-			if err != nil {
-				break
-			}
-			arrNode := &ExprArray{}
-			arrNode.elements = []AstNode{}
-			// simple case: []
-			// look for N consecutive elisions
-			// if we have 0 elisions, we don't even start the loop
-			for next.T == lex.TComma {
-				node := &ExprElision{}
-				arrNode.elements = append(arrNode.elements, node)
-				tmpCursor++
-				next, _ = p.LookAhead(tmpCursor)
-			}
-			if next.T == lex.TRightBracket {
-				tmpCursor++
-				p.cursor = tmpCursor
-				rootNode.children = append(rootNode.children, arrNode)
-			} else {
-				p.logger.Debug("TODO: parse array")
-				// bail
-			}
+			// TODO: implement
+			p.cursor++
 		}
-		// unary operator
+		// unary operator expression
 		if isUnaryOperator(token) {
-			tmpCursor := p.cursor // backtracks if we don't find a unary operator
-			unaryOp, rej := p.parseUnaryOperator(nil)
-			if rej != nil {
+			cursor := 0
+			unaryOp, err := p.parseUnaryOperator(&cursor)
+			if err == nil {
 				rootNode.children = append(rootNode.children, unaryOp)
-			} else {
-				p.cursor = tmpCursor
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, unaryOp.PrettyPrint())
+				p.cursor = p.cursor + cursor
 			}
 		}
+		// update expression
+		if isUpdateExpression(token) {
+			cursor := 0
+			updateExpr, err := p.parseUpdateExpr(&cursor)
+			if err == nil {
+				rootNode.children = append(rootNode.children, updateExpr)
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, updateExpr.PrettyPrint())
+				p.cursor = p.cursor + cursor
+			}
+		}
+
+		p.cursor++
 	}
 	p.logger.Debug("parsed %s", rootNode)
 	return rootNode

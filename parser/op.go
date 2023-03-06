@@ -1,12 +1,33 @@
 package parser
 
-import "github.com/ruiconti/gojs/lex"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/ruiconti/gojs/lex"
+)
 
 const EUnaryOp ExprType = "EUnaryOp"
 
+// UnaryExpression[Yield, Await]:
+//
+//	| UpdateExpression
+//	| delete UnaryExpression
+//	| void UnaryExpression
+//	| typeof UnaryExpression
+//	| + UnaryExpression
+//	| - UnaryExpression
+//	| ~ UnaryExpression
+//	| ! UnaryExpression
+//
+// We'll focus on the 2-4 cases for now
 type ExprUnaryOp struct {
 	operand  AstNode
 	operator lex.TokenType
+}
+
+func (e *ExprUnaryOp) Name() string {
+	return "UnaryOperatorExpression"
 }
 
 func (e *ExprUnaryOp) Type() ExprType {
@@ -17,73 +38,153 @@ func (e *ExprUnaryOp) Source() string {
 	return e.operand.Source()
 }
 
-func isUnaryOperator(t lex.Token) bool {
-	return t.T == lex.TPlus || t.T == lex.TMinus || t.T == lex.TBang || t.T == lex.TTilde
+func (e *ExprUnaryOp) PrettyPrint() string {
+	return fmt.Sprintf("(%s %s)", lex.ResolveName(e.operator), e.operand.PrettyPrint())
 }
 
-func (p *Parser) parseUnaryOperator(expr *ExprUnaryOp) (*ExprUnaryOp, error) {
+var UnaryOperators = []lex.TokenType{
+	lex.TDelete,
+	lex.TTypeof,
+	lex.TVoid,
+	lex.TPlus,
+	lex.TMinus,
+	lex.TBang,
+	lex.TTilde,
+}
+
+func isUnaryOperator(t lex.Token) bool {
+	for _, op := range UnaryOperators {
+		if t.T == op {
+			return true
+		}
+	}
+	return false
+}
+
+// Parser
+var errNotUnaryOperator = errors.New("current token is not an unary operator")
+
+func (p *Parser) parseUnaryOperator(cursor *int) (AstNode, error) {
+	// OPERATOR
 	// delete 0
 	// ˆ
-	// p.cursor: 0
-	curr := p.seq[p.cursor]
-	p.logger.Debug("parsing unary operator: %d: %v", p.cursor, curr)
-
-	// in unary operators, we first process the operator
-	var unaryOpExpr *ExprUnaryOp
-	if expr == nil {
-		unaryOpExpr = &ExprUnaryOp{
-			operator: curr.T,
-		}
-	} else {
-		// expr.operand
-	}
-
-	// process the next token
-	// delete 0
-	//        ˆ
-	// p.cursor: 1
-	p.cursor++
-	next, err := p.LookAhead(0)
+	tok, err := p.peekN(*cursor)
 	if err != nil {
 		return &ExprUnaryOp{}, err
 	}
-	if isUnaryOperator(next) {
-		// recursive descent
-		p.parseUnaryOperator(unaryOpExpr)
-	} else {
-		// we are done parsing the left hand side of the unary operator
-		// we now need to recursively parse the operand
-		unaryOpExpr.operand = p.parsePrimaryExpr(unaryOpExpr)
+
+	// OPERAND
+	// delete 0
+	//        ˆ
+	operator := tok.T
+	p.logger.Debug("[%d:%d] parser:unaryOpExpr: %v", p.cursor, *cursor, lex.ResolveName(tok.T))
+
+	if isUnaryOperator(tok) {
+		*cursor = *cursor + 1
+		opExpr, err := p.parseUnaryOperator(cursor)
+		if err == nil {
+			expr := &ExprUnaryOp{
+				operator: operator,
+				operand:  opExpr,
+			}
+			p.logger.Debug("[%d:%d] parser:unaryOpExpr:unary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), expr.PrettyPrint())
+			return expr, nil
+		}
 	}
 
-	return unaryOpExpr, nil
+	// the other production is UpdateExpression
+	// we are, for now, cutting the path:
+	// UpdateExpression -> LeftHandSideExpression -> PrimaryExpression -> IdentifierReference
+	opExpr, err := p.parsePrimaryExpr(cursor)
+	if err == nil {
+		p.logger.Debug("[%d:%d] parser:unaryOpExpr:primary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), opExpr.PrettyPrint())
+		return opExpr, nil
+	}
+
+	p.logger.Debug("[%d:%d] parser:unaryOpExpr:rej %v (%s)", p.cursor, *cursor, tok, err)
+	return nil, fmt.Errorf("no productions left in unary operator")
 }
 
-func (p *Parser) parsePrimaryExpr(parent AstNode) AstNode {
-	cursorTmp := p.cursor // save cursor to allow backtracking
+var UpdateOperators = []lex.TokenType{
+	lex.TMinusMinus,
+	lex.TPlusPlus,
+}
+
+func isUpdateExpression(t lex.Token) bool {
+	for _, op := range UpdateOperators {
+		if t.T == op {
+			return true
+		}
+	}
+	return false
+}
+
+var errNotUpdateOperator = errors.New("current token is not an update operator")
+
+func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
+	// UpdateExpression -> LeftHandSideExpression
+	// UpdateExpression -> ++ UnaryExpression
+	// UpdateExpression -> -- UnaryExpression
+
+	tok, err := p.peekN(*cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	if !isUpdateExpression(tok) {
+		return nil, errNotUpdateOperator
+	}
+
+	p.logger.Debug("[%d:%d] parser:updateExpr %v", p.cursor, *cursor, lex.ResolveName(tok.T))
+
+	*cursor = *cursor + 1
+	// first tries to resolve it as a primary expr
+	opExpr, err := p.parsePrimaryExpr(cursor)
+	if err == nil {
+		expr := &ExprUnaryOp{
+			operator: tok.T,
+			operand:  opExpr,
+		}
+		p.logger.Debug("[%d:%d] parser:updateExpr:primary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), expr.PrettyPrint())
+		return expr, nil
+	}
+
+	return nil, fmt.Errorf("no productions left in update operator")
+}
+
+var errNotPrimaryExpr = errors.New("current token is not a primary expression")
+
+func (p *Parser) parsePrimaryExpr(cursor *int) (AstNode, error) {
 	reject := false
 
 	// current token position
-	// delete s.length
-	//        ˆ
-	// p.cursor: 1
-	curr := p.seq[p.cursor]
-	p.logger.Debug("parsing primary expression: %d: %v", cursorTmp, curr)
+	// some statement here
+	// ˆ
+	// p.cursor: 0
+	token, err := p.peekN(*cursor)
+	if err != nil {
+		return nil, err
+	}
 
+	p.logger.Debug("[%d:%d] parser:primaryExpr %v", p.cursor, *cursor, token)
 	// in primary expressions, we first process the operator
 	var primaryExpr AstNode
-	switch curr.T {
+	switch token.T {
 	case lex.TIdentifier:
 		primaryExpr = &ExprIdentifierReference{
-			reference: curr.Lexeme,
+			reference: token.Lexeme,
 		}
 	case lex.TNumericLiteral:
 		primaryExpr = &ExprNumeric{
-			value: curr.Lexeme,
+			value: token.Lexeme,
 		}
-	case lex.TStringLiteral:
+	case lex.TStringLiteral_SingleQuote:
 		primaryExpr = &ExprStringLiteral{
-			value: curr.Lexeme,
+			value: token.Lexeme,
+		}
+	case lex.TStringLiteral_DoubleQuote:
+		primaryExpr = &ExprStringLiteral{
+			value: token.Lexeme,
 		}
 	case lex.TTrue:
 		primaryExpr = &ExprBoolean{
@@ -97,24 +198,17 @@ func (p *Parser) parsePrimaryExpr(parent AstNode) AstNode {
 		primaryExpr = &ExprNullLiteral{}
 	case lex.TUndefined:
 		primaryExpr = &ExprUndefinedLiteral{}
-		// case lex.TLeftParen:
-		// delete 0
-		//        ˆ
-		// p.cursor: 1
-		// p.cursor++
-		// primaryExpr = p.parseExpression()
-		// delete 0
-		//           ˆ
-		// p.cursor: 2
-		// p.cursor++
+	default:
+		reject = true
+		// not implemented yet
 	}
+
 	if reject {
-		p.cursor = cursorTmp
-	} else {
-		p.cursor++
+		p.logger.Debug("[%d:%d] parser:primaryExpr:rej %v", p.cursor, *cursor, token)
+		return nil, errNotPrimaryExpr
 	}
 
-	// todo: next token position
-
-	return primaryExpr
+	*cursor = *cursor + 1
+	p.logger.Debug("[%d:%d] parser:primaryExpr:acc %v", p.cursor, *cursor, primaryExpr.PrettyPrint())
+	return primaryExpr, nil
 }
