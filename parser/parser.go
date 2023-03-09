@@ -40,11 +40,25 @@ func (p *Parser) peek() lex.Token {
 	return p.seq[p.cursor]
 }
 
+func (p *Parser) advanceBy(n int) {
+	p.cursor += n
+}
+
 func (p *Parser) peekN(n int) (lex.Token, error) {
 	if p.cursor+n >= len(p.seq) {
 		return lex.Token{}, errors.New("EOF")
 	}
 	return p.seq[p.cursor+n], nil
+}
+
+func (p *Parser) matchAny(types ...lex.TokenType) bool {
+	for _, t := range types {
+		if p.peek().T == t {
+			p.advanceBy(1)
+			return true
+		}
+	}
+	return false
 }
 
 func NewParser(seq []lex.Token, logger *internal.SimpleLogger) *Parser {
