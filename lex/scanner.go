@@ -158,6 +158,8 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if s.idxHead > 0 && s.idxHeadLast == s.idxHead {
 			s.logger.Debug("infinite loop found, aborting...\n\n")
 			return s.tokens, errInfiniteLoop
+		} else {
+			s.idxHeadLast = s.idxHead
 		}
 
 		// identifiers
@@ -186,7 +188,7 @@ func (s *Scanner) Scan() ([]Token, error) {
 		if s.peek() == '`' {
 			continue
 			// TBI
-			s.scanTemplateLiteral()
+			// s.scanTemplateLiteral()
 		}
 
 		// numeric literals

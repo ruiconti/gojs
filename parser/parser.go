@@ -71,7 +71,12 @@ func (p *Parser) parseTokens() *ExprRootNode {
 	rootNode := &ExprRootNode{
 		children: []AstNode{},
 	}
-	p.logger.Debug("PARSER::")
+	p.logger.Debug("PARSER ::")
+	for i, token := range p.seq {
+		p.logger.Debug("T(%d) :: %v", i, token)
+	}
+	p.logger.Debug("\n")
+
 	defer func() {
 		stack := recover()
 		if stack != nil {
@@ -80,47 +85,75 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		}
 	}()
 
+	lastToken := lex.Token{}
 	for {
-		token, err := p.peekN(p.cursor)
-		p.logger.Debug("[%d] parser:loop: %v", p.cursor, token)
+		cursor := 0
+		token, err := p.peekN(cursor)
+		if lastToken == token {
+			p.logger.Debug("[%d:0] LOOP: bailing to prevent infinite loop", p.cursor)
+			p.logger.EmitStdout()
+			break
+		} else {
+			lastToken = token
+		}
+
+		p.logger.Debug("[%d:0] LOOP: %v", p.cursor, token)
 		if err != nil {
-			p.logger.Error("[%d] parser:loop: %s", p.cursor, err.Error())
+			p.logger.Error("[%d:0] LOOP: %s", p.cursor, err.Error())
 			break
 		}
-		// id | await | yield
-		if token.T == lex.TIdentifier || token.T == lex.TAwait || token.T == lex.TYield {
-			p.cursor++
-			node := &ExprIdentifierReference{reference: token.Lexeme}
-			rootNode.children = append(rootNode.children, node)
-		}
-		// ;
 		if token.T == lex.TSemicolon {
 			// TODO: Ignoring semicolons for now
-			p.cursor++
+			p.logger.Debug("[%d:0] LOOP:skipping (;)", p.cursor)
 		}
+
 		// [
 		if token.T == lex.TLeftBracket {
-			// TODO: implement
-			p.cursor++
+			var c int
+			p.logger.Debug("c:%d (%d)", c, &c)
+			node, err := p.parseArray(&c)
+			p.logger.Debug("c:%d (%d)", c, &c)
+			p.logger.Debug("[%d:%d] parser:root:endArray: %s", p.cursor, c, node.PrettyPrint())
+			if err == nil {
+				rootNode.children = append(rootNode.children, node)
+				p.cursor += c // accept the cursor
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, c, node.PrettyPrint())
+				continue
+			} else {
+				p.logger.Debug("[%d:%d] parser:array ERR: %s", p.cursor, c, err)
+			}
 		}
+
+		// primary expressions
+		// id | await | yield | literals
+		if isLiteralToken(token) || token.T == lex.TIdentifier || token.T == lex.TAwait || token.T == lex.TYield || token.T == lex.TUndefined {
+			node, err := p.parsePrimaryExpr(&cursor)
+			if err == nil {
+				rootNode.children = append(rootNode.children, node)
+				p.cursor += cursor // accept the cursor
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+				continue
+			}
+		}
+
 		// unary operator expression
 		if isUnaryOperator(token) {
-			cursor := 0
-			unaryOp, err := p.parseUnaryOperator(&cursor)
+			node, err := p.parseUnaryOperator(&cursor)
 			if err == nil {
-				rootNode.children = append(rootNode.children, unaryOp)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, unaryOp.PrettyPrint())
-				p.cursor = p.cursor + cursor
+				rootNode.children = append(rootNode.children, node)
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+				p.cursor += cursor // accept the cursor
+				continue
 			}
 		}
 		// update expression
 		if isUpdateExpression(token) {
-			cursor := 0
-			updateExpr, err := p.parseUpdateExpr(&cursor)
+			node, err := p.parseUpdateExpr(&cursor)
 			if err == nil {
-				rootNode.children = append(rootNode.children, updateExpr)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, updateExpr.PrettyPrint())
-				p.cursor = p.cursor + cursor
+				rootNode.children = append(rootNode.children, node)
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+				p.cursor += cursor // accept the cursor
+				continue
 			}
 		}
 

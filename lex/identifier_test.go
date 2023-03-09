@@ -36,7 +36,7 @@ import (
 // | any Unicode code point with the Unicode property “ID_Continue”
 
 func TestScan_IdentifierName(t *testing.T) {
-	src := `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ _012bx $02213 $$$$$ $\u0000\u0001\u0003 _____`
+	src := `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ _012bx $02213 $$$$$ $\u0000\u0001\u0003 _____ \u3417\u93f0x$$\u0122a_`
 	expected := []Token{
 		{T: TIdentifier, Lexeme: `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ`, Literal: `abcdefghjijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTWUVWXYZ`, Line: 0, Column: 0},
 		{T: TIdentifier, Lexeme: `_012bx`, Literal: `_012bx`, Line: 0, Column: 0},
@@ -44,6 +44,7 @@ func TestScan_IdentifierName(t *testing.T) {
 		{T: TIdentifier, Lexeme: `$$$$$`, Literal: `$$$$$`, Line: 0, Column: 0},
 		{T: TIdentifier, Lexeme: `$\u0000\u0001\u0003`, Literal: `$\u0000\u0001\u0003`, Line: 0, Column: 0},
 		{T: TIdentifier, Lexeme: `_____`, Literal: `_____`, Line: 0, Column: 0},
+		{T: TIdentifier, Lexeme: `\u3417\u93f0x$$\u0122a_`, Literal: `\u3417\u93f0x$$\u0122a_`, Line: 0, Column: 0},
 	}
 
 	logger := gojs.NewSimpleLogger(gojs.ModeDebug)

@@ -12,14 +12,7 @@ import (
 func prettyPrintMap(tokens []lex.Token) ([]string, error) {
 	var result []string
 	for _, token := range tokens {
-		name, err := lex.ResolveName(token)
-		if err != nil {
-			return []string{}, err
-		}
-		pretty := fmt.Sprintf("%s(%s)", name, token.Lexeme)
-		if err != nil {
-			return []string{}, err
-		}
+		pretty := fmt.Sprintf("%s(%s)", lex.ResolveName(token.T), token.Lexeme)
 		result = append(result, pretty)
 	}
 	return result, nil

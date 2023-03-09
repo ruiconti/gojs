@@ -1,31 +1,67 @@
 package parser
 
-import "testing"
+import (
+	"testing"
 
-func TestParseArrayElision(t *testing.T) {
-	t.Skip()
-	// src := `[,,, ,,   , ]`
-	// expected := ExprRootNode{
-	// 	children: []AstNode{
-	// 		&ExprArray{
-	// 			elements: []AstNode{
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 			},
-	// 		},
-	// 	},
-	// }
-	// got := Parse(src)
-	// CompareRootChildren(
-	// 	t,
-	// 	src,
-	// 	(got.children[0]).(*ExprArray).elements,
-	// 	(expected.children[0]).(*ExprArray).elements,
-	// )
+	"github.com/ruiconti/gojs/internal"
+)
+
+func TestParseArray_Simple(t *testing.T) {
+	t.Run("full of elisions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[,,, ,,   , ]`
+		expected := &ExprRootNode{
+			children: []AstNode{
+				&ExprArray{
+					elements: []AstNode{
+						&ExprNullLiteral{},
+						&ExprNullLiteral{},
+						&ExprNullLiteral{},
+						&ExprNullLiteral{},
+						&ExprNullLiteral{},
+						&ExprNullLiteral{},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, expected)
+	})
+	t.Run("full of primary expressions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[1,2,true,\u3340xa,undefined, null,'foo', "bar",]`
+		expected := &ExprRootNode{
+			children: []AstNode{
+				&ExprArray{
+					elements: []AstNode{
+						&ExprNumeric{
+							value: 1,
+						},
+						&ExprNumeric{
+							value: 2,
+						},
+						&ExprBoolean{
+							value: true,
+						},
+						&ExprIdentifierReference{
+							reference: `\u3340xa`,
+						},
+						&ExprUndefinedLiteral{},
+						&ExprNullLiteral{},
+						&ExprStringLiteral{
+							value: "foo",
+						},
+						&ExprStringLiteral{
+							value: "bar",
+						},
+						&ExprNullLiteral{},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, expected)
+	})
 }
 
 // ConditionalExpression is way too big
