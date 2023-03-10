@@ -45,6 +45,8 @@ func (s *Scanner) innerScanPunctuators(char rune) (TokenType, int, error) {
 		return TComma, 1, nil
 	case ':':
 		return TColon, 1, nil
+	case '^':
+		return TXor, 1, nil
 	case '~':
 		return TTilde, 1, nil
 	case '>':
