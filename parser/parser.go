@@ -52,8 +52,14 @@ func (p *Parser) peekN(n int) (lex.Token, error) {
 }
 
 func (p *Parser) matchAny(types ...lex.TokenType) bool {
+	if p.cursor >= len(p.seq) {
+		return false
+	}
+
 	for _, t := range types {
 		if p.peek().T == t {
+
+			p.logger.Debug("[%d] matched %s, stepping 1..", p.cursor, lex.ResolveName(t))
 			p.advanceBy(1)
 			return true
 		}
@@ -136,6 +142,13 @@ func (p *Parser) parseTokens() *ExprRootNode {
 			} else {
 				p.logger.Debug("[%d:%d] parser:array ERR: %s", p.cursor, c, err)
 			}
+		}
+
+		node, err := p.parseExpr(&cursor)
+		if err == nil {
+			rootNode.children = append(rootNode.children, node)
+		} else {
+			p.logger.Debug("[%d:%d] parser:root ERR: %s", p.cursor, cursor, err)
 		}
 
 		// primary expressions

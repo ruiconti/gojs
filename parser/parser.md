@@ -20,7 +20,7 @@ $$$
 ...
 $$$
 
-It is not as efficient to parse a left-recursive grammar with a recursive descent parser because we'd have to descend into the left recursion _for every token_, as illustrated in the example above. Given the size of the ECMAScript grammar, this would be _very_ inefficient. Instead, we'll use a technique called [left factoring](https://en.wikipedia.org/wiki/Left_factoring) to remove the left recursion.
+It is not as efficient to parse a left-recursive grammar with a recursive descent parser because we'd have to descend into the left recursion _for every token_, as illustrated in the example above. Given the size of the ECMAScript grammar, this would be _very_ inefficient. Instead, we'll use a technique called [left factoring](https://en.wikipedia.org/wiki/Left_factoring)[^1] to remove the left recursion.
 
 In our previous example, we could derive non-recursive rules that would produce the same strings:
 
