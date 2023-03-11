@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ruiconti/gojs/lex"
 )
@@ -48,11 +49,11 @@ func (p *Parser) parseBinaryExprGeneric(
 ) (AstNode, error) {
 	str := lex.ResolveName(operator)
 
-	p.logger.Debug("[%d] parseBinExprGeneric(%s)", p.cursor, str)
+	p.logger.Debug("[%d] parseBinExprGeneric(%s) parse-left", p.cursor, str)
 	c := 0
 	expr, err := left(&c)
 	if err != nil {
-		p.logger.Debug("[%d] bailing", p.cursor)
+		p.logger.Debug("[%d] parseBinExprGeneric(%s) parse-left:bailing", p.cursor, str)
 		return &ExprBinaryOp{}, err
 	}
 
@@ -70,6 +71,60 @@ func (p *Parser) parseBinaryExprGeneric(
 		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (before): %s", p.cursor, str, expr.PrettyPrint())
 		expr = &ExprBinaryOp{
 			operator: operator,
+			left:     expr,
+			right:    right,
+		}
+		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (after): %s", p.cursor, str, expr.PrettyPrint())
+	}
+	return expr, nil
+
+}
+
+func (p *Parser) parseBinaryExprGeneric2(
+	cursor *int,
+	operators []lex.TokenType,
+	left func(*int) (AstNode, error),
+	right func(*int) (AstNode, error),
+) (AstNode, error) {
+	var opstr strings.Builder
+	for _, op := range operators {
+		opstr.Write([]byte(lex.ResolveName(op)))
+	}
+
+	p.logger.Debug("[%d] parseBinExprGeneric2(%s) parse-left", p.cursor, opstr.String())
+	c := 0
+	// try to parse left side
+	expr, err := left(&c)
+	if err != nil {
+		p.logger.Debug("[%d] parseBinExprGeneric2(%s) parse-left:bailing", p.cursor, opstr.String())
+		return &ExprBinaryOp{}, err
+	}
+
+	// advance cursor to parse operator
+	p.advanceBy(c)
+	if p.isEOF() {
+		// we may have reached the right-hand-side of a binary expression
+		return expr, nil
+	}
+
+	for p.matchAny(operators...) {
+		// if it did match, then to parse the operator we need to look back
+		// we know it won't err because we just matched it :)
+		operator, _ := p.peekN(-1)
+
+		str := lex.ResolveName(operator.T)
+		p.logger.Debug("[%d] parseBinExprGeneric(%s): loop", p.cursor, str)
+		c = 0
+		right, err := right(&c)
+		if err != nil {
+			// eof or didn't match
+			break
+		}
+
+		p.advanceBy(c)
+		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (before): %s", p.cursor, str, expr.PrettyPrint())
+		expr = &ExprBinaryOp{
+			operator: operator.T,
 			left:     expr,
 			right:    right,
 		}
@@ -110,25 +165,72 @@ func (p *Parser) parseBitXorExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		lex.TXor,
-		p.parsePrimaryExpr,
-		p.parsePrimaryExpr,
+		p.parseBitAndExpr,
+		p.parseBitAndExpr,
 	)
 }
 
-// func (p *Parser) parseBitOrExpr() {}
+func (p *Parser) parseBitAndExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric(
+		c,
+		lex.TAnd,
+		p.parseEqualityExpr,
+		p.parseEqualityExpr,
+	)
+}
 
-// func (p *Parser) parseBitXorExpr() {}
+func (p *Parser) parseEqualityExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual},
+		p.parseRelationalExpr,
+		p.parseRelationalExpr,
+	)
+}
 
-// func (p *Parser) parseBitAndExpr() {}
+func (p *Parser) parseRelationalExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TGreaterThan, lex.TGreaterThanEqual, lex.TLessThan, lex.TLessThanEqual, lex.TInstanceof, lex.TIn},
+		p.parseShiftExpr,
+		p.parseShiftExpr,
+	)
+}
 
-// func (p *Parser) parseEqualityExpr() {}
+func (p *Parser) parseShiftExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift},
+		p.parseAdditiveExpr,
+		p.parseAdditiveExpr,
+	)
+}
 
-// func (p *Parser) parseRelationalExpr() {}
+func (p *Parser) parseAdditiveExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TPlus, lex.TMinus},
+		p.parseMultiplicativeExpr,
+		p.parseMultiplicativeExpr,
+	)
+}
 
-// func (p *Parser) parseShiftExpr() {}
+func (p *Parser) parseMultiplicativeExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent},
+		p.parseExponentialExpr,
+		p.parseExponentialExpr,
+	)
+}
 
-// func (p *Parser) parseAdditiveExpr() {}
-
-// func (p *Parser) parseExponentialExpr() {}
+func (p *Parser) parseExponentialExpr(c *int) (AstNode, error) {
+	return p.parseBinaryExprGeneric2(
+		c,
+		[]lex.TokenType{lex.TStarStar},
+		p.parseUnaryOperator,
+		p.parseUnaryOperator,
+	)
+}
 
 // func (p *Parser) parseUnaryExpr() {}

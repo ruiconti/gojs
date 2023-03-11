@@ -99,6 +99,7 @@ const (
 	TSlash
 	TSlashAssign
 	TStar
+	TStarStar
 	TStarAssign
 	TStrictEqual
 	TStrictNotEqual
@@ -217,6 +218,7 @@ var PunctuationNames = map[TokenType]string{
 	TPlusAssign:               "+=",
 	TMinusAssign:              "-=",
 	TStarAssign:               "*=",
+	TStarStar:                 "**",
 	TPercentAssign:            "%=",
 	TLeftShiftAssign:          "<<=",
 	TRightShiftAssign:         ">>=",

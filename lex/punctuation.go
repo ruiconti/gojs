@@ -49,6 +49,8 @@ func (s *Scanner) innerScanPunctuators(char rune) (TokenType, int, error) {
 		return TXor, 1, nil
 	case '~':
 		return TTilde, 1, nil
+	case '%':
+		return TPercent, 1, nil
 	case '>':
 		if s.seekMatchSequence([]rune{'>', '>', '='}) {
 			// >>>= is unsigned right shift assign
@@ -175,7 +177,10 @@ func (s *Scanner) innerScanPunctuators(char rune) (TokenType, int, error) {
 			return TMinus, 1, nil
 		}
 	case '*':
-		if s.seekMatchSequence([]rune{'='}) {
+		if s.seekMatchSequence([]rune{'*'}) {
+			// ** is exponential operator
+			return TStarStar, 2, nil
+		} else if s.seekMatchSequence([]rune{'='}) {
 			// *= is multiply and assign
 			return TStarAssign, 2, nil
 		} else {

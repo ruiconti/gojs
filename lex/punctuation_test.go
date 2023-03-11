@@ -7,7 +7,7 @@ import (
 )
 
 func TestScanSimplePunctuators(t *testing.T) {
-	src := `;()~:{}[];,~^`
+	src := `;()~:{}[];,~^%`
 
 	expected := []Token{
 		{T: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
@@ -23,6 +23,7 @@ func TestScanSimplePunctuators(t *testing.T) {
 		{T: TComma, Lexeme: ",", Literal: nil, Line: 0, Column: 0},
 		{T: TTilde, Lexeme: "~", Literal: nil, Line: 0, Column: 0},
 		{T: TXor, Lexeme: "^", Literal: nil, Line: 0, Column: 0},
+		{T: TPercent, Lexeme: "%", Literal: nil, Line: 0, Column: 0},
 	}
 
 	logger := gojs.NewSimpleLogger(gojs.ModeDebug)
@@ -122,12 +123,13 @@ func TestScanDoublePunctuators_PlusMinus(t *testing.T) {
 	assertLexemes(t, logger, got, expected)
 }
 func TestScanDoublePunctuators_StarSlash(t *testing.T) {
-	src := `* *= / /=`
+	src := `* *= / /= **`
 	expected := []Token{
 		{T: TStar, Lexeme: "*", Literal: nil, Line: 0, Column: 0},
 		{T: TStarAssign, Lexeme: "*=", Literal: nil, Line: 0, Column: 0},
 		{T: TSlash, Lexeme: "/", Literal: nil, Line: 0, Column: 0},
 		{T: TSlashAssign, Lexeme: "/=", Literal: nil, Line: 0, Column: 0},
+		{T: TStarStar, Lexeme: "**", Literal: nil, Line: 0, Column: 0},
 	}
 
 	logger := gojs.NewSimpleLogger(gojs.ModeDebug)

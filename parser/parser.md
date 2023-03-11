@@ -105,6 +105,10 @@ ShiftExpr' = ("<<" | ">>" | ">>>") AdditiveExpr ShiftExpr'
 AdditiveExpr = MultiplicativeExpr AdditiveExpr'
 AdditiveExpr' = ("+" | "-") MultiplicativeExpr AdditiveExpr'
 
+-- MultiplicativeExpr 
+MultiplicativeExpr = ExponentialExpr MultiplicativeExpr'
+MultiplicativeExpr' = ("*" | "/", "%") ExponentialExpr MultiplicativeExpr'
+
 -- ExponentialExpr
 ExponentialExpr = UnaryExpr | UpdateExpr "**" UnaryExpr
 

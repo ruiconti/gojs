@@ -40,6 +40,10 @@ func (p *Parser) peek() lex.Token {
 	return p.seq[p.cursor]
 }
 
+func (p *Parser) isEOF() bool {
+	return p.cursor >= len(p.seq)
+}
+
 func (p *Parser) advanceBy(n int) {
 	p.cursor += n
 }
