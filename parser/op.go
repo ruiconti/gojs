@@ -7,20 +7,14 @@ import (
 	"github.com/ruiconti/gojs/lex"
 )
 
+// ////////////////////////////
+// Unary Operator Expression
+// ////////////////////////////
 const EUnaryOp ExprType = "EUnaryOp"
 
-// UnaryExpression[Yield, Await]:
-//
-//	| UpdateExpression
-//	| delete UnaryExpression
-//	| void UnaryExpression
-//	| typeof UnaryExpression
-//	| + UnaryExpression
-//	| - UnaryExpression
-//	| ~ UnaryExpression
-//	| ! UnaryExpression
-//
-// We'll focus on the 2-4 cases for now
+var errNotUnaryOperator = errors.New("current token is not an unary operator")
+var errNotUpdateOperator = errors.New("current token is not an update operator")
+
 type ExprUnaryOp struct {
 	operand  AstNode
 	operator lex.TokenType
@@ -52,102 +46,75 @@ var UnaryOperators = []lex.TokenType{
 	lex.TTilde,
 }
 
-func isUnaryOperator(t lex.Token) bool {
-	for _, op := range UnaryOperators {
-		if t.T == op {
-			return true
-		}
-	}
-	return false
-}
-
 // Parser
-var errNotUnaryOperator = errors.New("current token is not an unary operator")
-
-func (p *Parser) parseUnaryOperator(cursor *int) (AstNode, error) {
-	// OPERATOR
-	// delete 0
-	// ˆ
-	tok, err := p.peekN(*cursor)
-	if err != nil {
-		return &ExprUnaryOp{}, err
-	}
-
-	// OPERAND
-	// delete 0
-	//        ˆ
-	operator := tok.T
-	p.logger.Debug("[%d:%d] parser:unaryOpExpr: %v", p.cursor, *cursor, lex.ResolveName(tok.T))
-
-	if isUnaryOperator(tok) {
-		*cursor = *cursor + 1
-		opExpr, err := p.parseUnaryOperator(cursor)
-		if err == nil {
-			expr := &ExprUnaryOp{
-				operator: operator,
-				operand:  opExpr,
-			}
-			p.logger.Debug("[%d:%d] parser:unaryOpExpr:unary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), expr.PrettyPrint())
-			return expr, nil
-		}
-	}
-
-	// the other production is UpdateExpression
-	// we are, for now, cutting the path:
-	// UpdateExpression -> LeftHandSideExpression -> PrimaryExpression -> IdentifierReference
-	opExpr, err := p.parsePrimaryExpr(cursor)
-	if err == nil {
-		p.logger.Debug("[%d:%d] parser:unaryOpExpr:primary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), opExpr.PrettyPrint())
-		return opExpr, nil
-	}
-
-	p.logger.Debug("[%d:%d] parser:unaryOpExpr:rej %v (%s)", p.cursor, *cursor, tok, err)
-	return nil, fmt.Errorf("no productions left in unary operator")
-}
 
 var UpdateOperators = []lex.TokenType{
 	lex.TMinusMinus,
 	lex.TPlusPlus,
 }
 
-func isUpdateExpression(t lex.Token) bool {
-	for _, op := range UpdateOperators {
-		if t.T == op {
-			return true
-		}
-	}
-	return false
+// ////////////////////////////
+// Binary Operator Expression
+// ////////////////////////////
+const EBinaryOp ExprType = "ExprBinaryOp"
+
+type ExprBinaryOp struct {
+	left     AstNode
+	right    AstNode
+	operator lex.TokenType
 }
 
-var errNotUpdateOperator = errors.New("current token is not an update operator")
+func (e *ExprBinaryOp) Type() ExprType {
+	return EBinaryOp
+}
 
-func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
-	// UpdateExpression -> LeftHandSideExpression
-	// UpdateExpression -> ++ UnaryExpression
-	// UpdateExpression -> -- UnaryExpression
+func (e *ExprBinaryOp) Source() string {
+	return fmt.Sprintf("%s %s %s", e.left.Source(), lex.ResolveName(e.operator), e.right.Source())
+}
 
-	tok, err := p.peekN(*cursor)
-	if err != nil {
-		return nil, err
-	}
+func (e *ExprBinaryOp) PrettyPrint() string {
+	return fmt.Sprintf("(%s %s %s)", lex.ResolveName(e.operator), e.left.PrettyPrint(), e.right.PrettyPrint())
+}
 
-	if !isUpdateExpression(tok) {
-		return nil, errNotUpdateOperator
-	}
+// /////////////////////////////
+// New Expression
+// /////////////////////////////
+const ENew ExprType = "ExprBinaryOp"
 
-	p.logger.Debug("[%d:%d] parser:updateExpr %v", p.cursor, *cursor, lex.ResolveName(tok.T))
+type ExprNew struct {
+	callee AstNode
+}
 
-	*cursor = *cursor + 1
-	// first tries to resolve it as a primary expr
-	opExpr, err := p.parsePrimaryExpr(cursor)
-	if err == nil {
-		expr := &ExprUnaryOp{
-			operator: tok.T,
-			operand:  opExpr,
-		}
-		p.logger.Debug("[%d:%d] parser:updateExpr:primary:acc %v -> %v", p.cursor, *cursor, lex.ResolveName(tok.T), expr.PrettyPrint())
-		return expr, nil
-	}
+func (e *ExprNew) Type() ExprType {
+	return ENew
+}
 
-	return nil, fmt.Errorf("no productions left in update operator")
+func (e *ExprNew) Source() string {
+	return fmt.Sprintf("new %s", e.callee.Source())
+}
+
+func (e *ExprNew) PrettyPrint() string {
+	return fmt.Sprintf("(new %s)", e.callee.PrettyPrint())
+}
+
+// /////////////////////////////
+// Member Expression
+// /////////////////////////////
+const EMemberAccess ExprType = "ExprBinaryOp"
+
+type ExprMemberAccess struct {
+	object   AstNode
+	property AstNode
+}
+
+func (e *ExprMemberAccess) Type() ExprType {
+	return EMemberAccess
+}
+
+func (e *ExprMemberAccess) Source() string {
+	return fmt.Sprintf("%s[%s]", e.property.PrettyPrint(), e.object.PrettyPrint())
+}
+
+func (e *ExprMemberAccess) PrettyPrint() string {
+	return fmt.Sprintf("(<- %s %s)", e.property.PrettyPrint(), e.object.PrettyPrint())
 }

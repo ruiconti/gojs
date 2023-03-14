@@ -22,8 +22,8 @@ func idExpr(name string) *ExprIdentifierReference {
 	}
 }
 
-func TestCondExpr_MemberExpr(t *testing.T) {
-	t.Run("properly parses binary expr", func(t *testing.T) {
+func TestBinaryOperators(t *testing.T) {
+	t.Run("properly parses simple, same-precedence, binary expr", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		binOperators := []lex.TokenType{lex.TLogicalOr,
 			lex.TLogicalAnd,
@@ -84,7 +84,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsLogicalOr := []lex.TokenType{lex.TLogicalOr}
 		opsLogicalAnd := []lex.TokenType{lex.TLogicalAnd}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsLogicalAnd, /* higher */
 			opsLogicalOr,  /* lower */
@@ -95,7 +95,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsOr := []lex.TokenType{lex.TOr}
 		opsLogicalAnd := []lex.TokenType{lex.TLogicalAnd}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsOr,         /* higher */
 			opsLogicalAnd, /* lower */
@@ -106,7 +106,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsXor := []lex.TokenType{lex.TXor}
 		opsOr := []lex.TokenType{lex.TOr}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsXor, /* higher */
 			opsOr,  /* lower */
@@ -117,7 +117,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsAnd := []lex.TokenType{lex.TAnd}
 		opsXor := []lex.TokenType{lex.TXor}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsAnd, /* higher */
 			opsXor, /* lower */
@@ -128,7 +128,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsEq := []lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual}
 		opsBitwise := []lex.TokenType{lex.TAnd, lex.TOr, lex.TXor}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsEq,      /* higher */
 			opsBitwise, /* lower */
@@ -138,7 +138,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsEq := []lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual}
 		opsRelational := []lex.TokenType{lex.TLessThan, lex.TLessThanEqual, lex.TGreaterThan, lex.TGreaterThanEqual, lex.TIn, lex.TInstanceof}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsRelational, /* higher */
 			opsEq,         /* lower */
@@ -148,7 +148,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsRelational := []lex.TokenType{lex.TLessThan, lex.TLessThanEqual, lex.TGreaterThan, lex.TGreaterThanEqual, lex.TIn, lex.TInstanceof}
 		opsShift := []lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsShift,      /* higher */
 			opsRelational, /* lower */
@@ -159,7 +159,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsShift := []lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift}
 		opsAdd := []lex.TokenType{lex.TPlus, lex.TMinus}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsAdd,   /* higher */
 			opsShift, /* lower */
@@ -170,7 +170,7 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsMult := []lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent}
 		opsAdd := []lex.TokenType{lex.TPlus, lex.TMinus}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsMult, /* higher */
 			opsAdd,  /* lower */
@@ -181,16 +181,147 @@ func TestCondExpr_MemberExpr(t *testing.T) {
 		opsMult := []lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent}
 		opsExp := []lex.TokenType{lex.TStarStar}
 
-		assertExprPrecedence(
+		assertBinaryExprPrecedence(
 			t,
 			opsExp,  /* higher */
 			opsMult, /* lower */
 		)
 	})
+
+	// TODO: this should err because the grammar doesn't support this operation
+	// TODO: without parentheses
+	// t.Run("unary operation has precedence over exponential operation", func(t *testing.T) {
+	// 	multOpExpr := func(left AstNode, right AstNode) *ExprBinaryOp {
+	// 		return &ExprBinaryOp{
+	// 			operator: lex.TStarStar,
+	// 			left:     left,
+	// 			right:    right,
+	// 		}
+	// 	}
+
+	// 	for _, operator := range UnaryOperators {
+	// 		unaryOpExpr := func(binding string) *ExprUnaryOp {
+	// 			return &ExprUnaryOp{
+	// 				operator: operator,
+	// 				operand: &ExprIdentifierReference{
+	// 					reference: binding,
+	// 				},
+	// 			}
+	// 		}
+
+	// 		lexeme := lex.ResolveName(operator)
+	// 		src := fmt.Sprintf("%s a ** b ** %s c ** d ** %s e ** f", lexeme, lexeme, lexeme)
+	// 		// equals: delete a ** (b ** (delete c ** (d ** (delete e ** f) ) ) )
+	// 		exp := &ExprRootNode{
+	// 			children: []AstNode{
+	// 				multOpExpr(
+	// 					unaryOpExpr("a"),
+	// 					multOpExpr(
+	// 						idExpr("b"),
+	// 						multOpExpr(
+	// 							unaryOpExpr("c"),
+	// 							multOpExpr(
+	// 								idExpr("d"),
+	// 								multOpExpr(
+	// 									unaryOpExpr("e"),
+	// 									idExpr("f"),
+	// 								),
+	// 							),
+	// 						),
+	// 					),
+	// 				),
+	// 			},
+	// 		}
+
+	// 		logger := internal.NewSimpleLogger(internal.ModeDebug)
+	// 		got := Parse(logger, src)
+	// 		AssertExprEqual(t, logger, got, exp)
+	// 	}
+	// })
+
+	t.Run("unary expr called recursively", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UnaryOperators {
+			operatorName := lex.ResolveName(operator)
+			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
+			got := Parse(logger, src)
+			exp := &ExprRootNode{
+				children: []AstNode{
+					&ExprUnaryOp{
+						operand: &ExprUnaryOp{
+							operand: &ExprUnaryOp{
+								operand: &ExprUnaryOp{
+									operand: &ExprIdentifierReference{
+										reference: "bar",
+									},
+									operator: operator,
+								},
+								operator: operator,
+							},
+							operator: operator,
+						},
+						operator: operator,
+					},
+				},
+			}
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
+
+	t.Run("unary expression called with update expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, unaryOp := range UnaryOperators {
+			for _, updateOp := range UpdateOperators {
+				src := fmt.Sprintf("%s %s foo", lex.ResolveName(unaryOp), lex.ResolveName(updateOp))
+				got := Parse(logger, src)
+				exp := &ExprRootNode{
+					children: []AstNode{
+						&ExprUnaryOp{
+							operator: unaryOp,
+							operand: &ExprUnaryOp{
+								operator: updateOp,
+								operand:  idExpr("foo"),
+							},
+						},
+					},
+				}
+
+				AssertExprEqual(t, logger, got, exp)
+			}
+		}
+
+	})
+
+	t.Run("new expression called with member expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := fmt.Sprintf("new foo.bar[baz][foo2].bar2")
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []AstNode{
+				&ExprNew{
+					callee: &ExprMemberAccess{
+						object: &ExprMemberAccess{
+							object: &ExprMemberAccess{
+								object: &ExprMemberAccess{
+									object:   idExpr("foo"),
+									property: idExpr("bar"),
+								},
+								property: idExpr("baz"),
+							},
+							property: idExpr("foo2"),
+						},
+						property: idExpr("bar2"),
+					},
+				},
+			},
+		}
+
+		AssertExprEqual(t, logger, got, exp)
+	})
 }
 
-// assertExprPrecedence asserts that the given operators have the correct precedence.
-func assertExprPrecedence(
+// assertBinaryExprPrecedence asserts that the given operators have the correct precedence.
+func assertBinaryExprPrecedence(
 	t *testing.T,
 	opsHigherPrecedence []lex.TokenType,
 	opsLowerPrecedence []lex.TokenType,

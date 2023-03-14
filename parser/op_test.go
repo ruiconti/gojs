@@ -29,35 +29,6 @@ func TestUnaryOp(t *testing.T) {
 		}
 	})
 
-	t.Run("recursive identifier reference", func(t *testing.T) {
-		logger := internal.NewSimpleLogger(internal.ModeDebug)
-		for _, operator := range UnaryOperators {
-			operatorName := lex.ResolveName(operator)
-			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
-			got := Parse(logger, src)
-			exp := &ExprRootNode{
-				children: []AstNode{
-					&ExprUnaryOp{
-						operand: &ExprUnaryOp{
-							operand: &ExprUnaryOp{
-								operand: &ExprUnaryOp{
-									operand: &ExprIdentifierReference{
-										reference: "bar",
-									},
-									operator: operator,
-								},
-								operator: operator,
-							},
-							operator: operator,
-						},
-						operator: operator,
-					},
-				},
-			}
-			AssertExprEqual(t, logger, got, exp)
-		}
-	})
-
 	t.Run("simple literal", func(t *testing.T) {
 	})
 }

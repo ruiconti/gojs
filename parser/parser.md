@@ -25,6 +25,8 @@ It is not as efficient to parse a left-recursive grammar with a recursive descen
 In our previous example, we could derive non-recursive rules that would produce the same strings:
 
 $$$
+A -> A \alpha | \beta
+..
 A -> \beta A'
 A' -> \alpha A'
 $$$
@@ -44,7 +46,7 @@ $$$
 Becomes
 
 $$$
-Expr -> AssignExpr Expr'
+Expr  -> AssignExpr Expr'
 Expr' -> "," AssignExpr Expr'
 $$$
 
@@ -127,6 +129,16 @@ NewExpr = MemberExpr | "new" NewExpr
 
 -- MemberExpr
 MemberExpr = PrimaryExpr | MemberExpr "[" Expr "]" | MemberExpr "." IdentifierName | MemberExpr TemplateLiteral | SuperProperty | SuperCall
+
+$$$
+A -> A \alpha | \beta
+..
+A -> \beta A'
+A' -> \alpha A'
+$$$
+MemberExpr = "[" Expr "]" MemberExpr'
+MemberExpr' = "." IdentifierName MemberExpr''
+MemberExpr'' = PrimaryExpr MemberExpr'''
 
 -- ..branching into PrimaryExpr ::
 -- PrimaryExpr

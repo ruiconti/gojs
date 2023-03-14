@@ -3,7 +3,6 @@ package parser
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/ruiconti/gojs/lex"
@@ -186,70 +185,4 @@ func (e *ExprUndefinedLiteral) Type() ExprType {
 
 func (e *ExprUndefinedLiteral) PrettyPrint() string {
 	return "undefined"
-}
-
-// -------------
-// ExprPrimary
-// -------------
-func (p *Parser) parsePrimaryExpr(cursor *int) (AstNode, error) {
-	reject := false
-
-	// current token position
-	// some statement here
-	// ˆ
-	// p.cursor: 0
-	token, err := p.peekN(*cursor)
-	if err != nil {
-		return nil, err
-	}
-
-	p.logger.Debug("[%d:%d] parser:primaryExpr %v", p.cursor, *cursor, token)
-	// in primary expressions, we first process the operator
-	var primaryExpr AstNode
-	switch token.T {
-	case lex.TIdentifier:
-		primaryExpr = &ExprIdentifierReference{
-			reference: token.Lexeme,
-		}
-	case lex.TNumericLiteral:
-		num, err := strconv.ParseFloat(token.Lexeme, 64)
-		if err != nil {
-			return nil, err
-		}
-		primaryExpr = &ExprNumeric{
-			value: num,
-		}
-	case lex.TStringLiteral_SingleQuote:
-		primaryExpr = &ExprStringLiteral{
-			value: token.Lexeme,
-		}
-	case lex.TStringLiteral_DoubleQuote:
-		primaryExpr = &ExprStringLiteral{
-			value: token.Lexeme,
-		}
-	case lex.TTrue:
-		primaryExpr = &ExprBoolean{
-			value: true,
-		}
-	case lex.TFalse:
-		primaryExpr = &ExprBoolean{
-			value: false,
-		}
-	case lex.TNull:
-		primaryExpr = &ExprNullLiteral{}
-	case lex.TUndefined:
-		primaryExpr = &ExprUndefinedLiteral{}
-	default:
-		reject = true
-		// not implemented yet
-	}
-
-	if reject {
-		p.logger.Debug("[%d:%d] parser:primaryExpr:rej %v", p.cursor, *cursor, token)
-		return nil, errNotPrimaryExpr
-	}
-
-	*cursor = *cursor + 1
-	p.logger.Debug("[%d:%d] parser:primaryExpr:acc %v", p.cursor, *cursor, primaryExpr.PrettyPrint())
-	return primaryExpr, nil
 }

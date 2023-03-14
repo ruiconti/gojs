@@ -2,6 +2,7 @@ package parser
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/ruiconti/gojs/lex"
@@ -17,70 +18,11 @@ func (p *Parser) parseAssignExpr(c *int) (AstNode, error) {
 	return p.parseCondExpr(c)
 }
 
-type ExprBinaryOp struct {
-	left     AstNode
-	right    AstNode
-	operator lex.TokenType
-}
-
-const EBinaryOp ExprType = "ExprBinaryOp"
-
-func (e *ExprBinaryOp) Type() ExprType {
-	return EBinaryOp
-}
-
-func (e *ExprBinaryOp) Source() string {
-	return fmt.Sprintf("%s %s %s", e.left.Source(), lex.ResolveName(e.operator), e.right.Source())
-}
-
-func (e *ExprBinaryOp) PrettyPrint() string {
-	return fmt.Sprintf("(%s %s %s)", lex.ResolveName(e.operator), e.left.PrettyPrint(), e.right.PrettyPrint())
-}
-
 func (p *Parser) parseCondExpr(c *int) (AstNode, error) {
 	return p.parseLogOrExpr(c)
 }
 
 func (p *Parser) parseBinaryExprGeneric(
-	cursor *int,
-	operator lex.TokenType,
-	left func(*int) (AstNode, error),
-	right func(*int) (AstNode, error),
-) (AstNode, error) {
-	str := lex.ResolveName(operator)
-
-	p.logger.Debug("[%d] parseBinExprGeneric(%s) parse-left", p.cursor, str)
-	c := 0
-	expr, err := left(&c)
-	if err != nil {
-		p.logger.Debug("[%d] parseBinExprGeneric(%s) parse-left:bailing", p.cursor, str)
-		return &ExprBinaryOp{}, err
-	}
-
-	p.advanceBy(c)
-	for p.matchAny(operator) {
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): loop", p.cursor, str)
-		c = 0
-		right, err := right(&c)
-		if err != nil {
-			// eof or didn't match
-			break
-		}
-
-		p.advanceBy(c)
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (before): %s", p.cursor, str, expr.PrettyPrint())
-		expr = &ExprBinaryOp{
-			operator: operator,
-			left:     expr,
-			right:    right,
-		}
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (after): %s", p.cursor, str, expr.PrettyPrint())
-	}
-	return expr, nil
-
-}
-
-func (p *Parser) parseBinaryExprGeneric2(
 	cursor *int,
 	operators []lex.TokenType,
 	left func(*int) (AstNode, error),
@@ -91,14 +33,15 @@ func (p *Parser) parseBinaryExprGeneric2(
 		opstr.Write([]byte(lex.ResolveName(op)))
 	}
 
-	p.logger.Debug("[%d] parseBinExprGeneric2(%s) parse-left", p.cursor, opstr.String())
+	p.log(cursor, "parseBinExprGeneric2 (%s) ENTER", opstr.String())
 	c := 0
 	// try to parse left side
 	expr, err := left(&c)
 	if err != nil {
-		p.logger.Debug("[%d] parseBinExprGeneric2(%s) parse-left:bailing", p.cursor, opstr.String())
+		p.log(cursor, "parseBinExprGeneric2 (%s) left-expr REJ", opstr.String())
 		return &ExprBinaryOp{}, err
 	}
+	p.log(cursor, "parseBinExprGeneric2 (%s) left-expr ACC: %v", opstr.String(), expr.PrettyPrint())
 
 	// advance cursor to parse operator
 	p.advanceBy(c)
@@ -113,31 +56,33 @@ func (p *Parser) parseBinaryExprGeneric2(
 		operator, _ := p.peekN(-1)
 
 		str := lex.ResolveName(operator.T)
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): loop", p.cursor, str)
 		c = 0
-		right, err := right(&c)
+		rightArg, err := right(&c)
 		if err != nil {
+			p.log(cursor, "parseBinExprGeneric2 (loop:%s) right-expr (REJ): %v", str, err)
 			// eof or didn't match
 			break
 		}
+		p.log(cursor, "parseBinExprGeneric2 (loop:%s) right-expr (ACC): %v", str, rightArg.PrettyPrint())
 
 		p.advanceBy(c)
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (before): %s", p.cursor, str, expr.PrettyPrint())
+		p.log(cursor, "parseBinExprGeneric2 (loop:%s) before: %v", str, expr.PrettyPrint())
 		expr = &ExprBinaryOp{
 			operator: operator.T,
 			left:     expr,
-			right:    right,
+			right:    rightArg,
 		}
-		p.logger.Debug("[%d] parseBinExprGeneric(%s): expr (after): %s", p.cursor, str, expr.PrettyPrint())
+		p.log(cursor, "parseBinExprGeneric2 (loop:%s) after: %v", str, expr.PrettyPrint())
 	}
-	return expr, nil
 
+	p.log(cursor, "parseBinExprGeneric2 returning (ACC): %v", expr.PrettyPrint())
+	return expr, nil
 }
 
 func (p *Parser) parseLogOrExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
-		lex.TLogicalOr,
+		[]lex.TokenType{lex.TLogicalOr},
 		p.parseAndExpr,
 		p.parseAndExpr,
 	)
@@ -146,7 +91,7 @@ func (p *Parser) parseLogOrExpr(c *int) (AstNode, error) {
 func (p *Parser) parseAndExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
-		lex.TLogicalAnd,
+		[]lex.TokenType{lex.TLogicalAnd},
 		p.parseBitOrExpr,
 		p.parseBitOrExpr,
 	)
@@ -155,7 +100,7 @@ func (p *Parser) parseAndExpr(c *int) (AstNode, error) {
 func (p *Parser) parseBitOrExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
-		lex.TOr,
+		[]lex.TokenType{lex.TOr},
 		p.parseBitXorExpr,
 		p.parseBitXorExpr,
 	)
@@ -164,7 +109,7 @@ func (p *Parser) parseBitOrExpr(c *int) (AstNode, error) {
 func (p *Parser) parseBitXorExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
-		lex.TXor,
+		[]lex.TokenType{lex.TXor},
 		p.parseBitAndExpr,
 		p.parseBitAndExpr,
 	)
@@ -173,14 +118,14 @@ func (p *Parser) parseBitXorExpr(c *int) (AstNode, error) {
 func (p *Parser) parseBitAndExpr(c *int) (AstNode, error) {
 	return p.parseBinaryExprGeneric(
 		c,
-		lex.TAnd,
+		[]lex.TokenType{lex.TAnd},
 		p.parseEqualityExpr,
 		p.parseEqualityExpr,
 	)
 }
 
 func (p *Parser) parseEqualityExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual},
 		p.parseRelationalExpr,
@@ -189,7 +134,7 @@ func (p *Parser) parseEqualityExpr(c *int) (AstNode, error) {
 }
 
 func (p *Parser) parseRelationalExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TGreaterThan, lex.TGreaterThanEqual, lex.TLessThan, lex.TLessThanEqual, lex.TInstanceof, lex.TIn},
 		p.parseShiftExpr,
@@ -198,7 +143,7 @@ func (p *Parser) parseRelationalExpr(c *int) (AstNode, error) {
 }
 
 func (p *Parser) parseShiftExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift},
 		p.parseAdditiveExpr,
@@ -207,7 +152,7 @@ func (p *Parser) parseShiftExpr(c *int) (AstNode, error) {
 }
 
 func (p *Parser) parseAdditiveExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TPlus, lex.TMinus},
 		p.parseMultiplicativeExpr,
@@ -216,7 +161,7 @@ func (p *Parser) parseAdditiveExpr(c *int) (AstNode, error) {
 }
 
 func (p *Parser) parseMultiplicativeExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent},
 		p.parseExponentialExpr,
@@ -225,7 +170,7 @@ func (p *Parser) parseMultiplicativeExpr(c *int) (AstNode, error) {
 }
 
 func (p *Parser) parseExponentialExpr(c *int) (AstNode, error) {
-	return p.parseBinaryExprGeneric2(
+	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TStarStar},
 		p.parseUnaryOperator,
@@ -233,4 +178,199 @@ func (p *Parser) parseExponentialExpr(c *int) (AstNode, error) {
 	)
 }
 
-// func (p *Parser) parseUnaryExpr() {}
+func (p *Parser) parseUnaryOperator(cursor *int) (AstNode, error) {
+	// UnaryExpr = UpdateExpr | ("delete" | "void" | "typeof" | "+" | "-" | "~" | "!") UnaryExpr
+	// parse (UpdateExpression)
+	p.log(cursor, "parseUnaryExpr ENTER")
+	p.log(cursor, "parseUnaryExpr left-expr (updateExpr)")
+	updateExpr, err := p.parseUpdateExpr(cursor)
+	if err == nil {
+		p.log(cursor, "parseUnaryExpr left-expr (updateExpr) returning (ACC): %v", updateExpr.PrettyPrint())
+		return updateExpr, nil
+	}
+
+	var expr *ExprUnaryOp
+	for p.matchAny(UnaryOperators...) {
+		// parse (UnaryOperator)
+		operator, _ := p.peekN(-1)
+		str := lex.ResolveName(operator.T)
+
+		p.log(cursor, "parseUnaryExpr (loop:%v) evaluating operand...", str)
+		*cursor = 0
+		operand, err := p.parseUnaryOperator(cursor)
+		if err != nil {
+			p.log(cursor, "parseUnaryExpr (loop:%v) operand eval rejected: %v", str, err)
+			return nil, err
+			// break
+		}
+		p.log(cursor, "parseUnaryExpr (loop:%v) operand eval accepted: %v", str, operand)
+
+		// found a valid operand, walk it
+		p.advanceBy(*cursor)
+		expr = &ExprUnaryOp{
+			operator: operator.T,
+			operand:  operand,
+		}
+		p.log(cursor, "parseUnaryExpr (loop:%v) expr: %v", str, expr.PrettyPrint())
+	}
+
+	if expr == nil {
+		p.log(cursor, "parseUnaryExpr returning (REJ): expr nil")
+		return expr, fmt.Errorf("parseUnaryExpr rejected")
+	}
+
+	p.log(cursor, "parseUnaryExpr returning (ACC): %v", expr.PrettyPrint())
+	return expr, nil
+}
+
+func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
+	p.log(cursor, "parseUpdateExpr ENTER")
+	var expr AstNode
+
+	// parse (LeftHandSideExpression)
+	leftExpr, err := p.parseLeftHandSideExpr(cursor)
+	if err == nil {
+		// TODO: this early bail may not parse valid update expressions
+		return leftExpr, nil
+	}
+
+	for p.matchAny(UpdateOperators...) {
+		// parse (UnaryOperator)
+		operator, _ := p.peekN(-1)
+		str := lex.ResolveName(operator.T)
+
+		p.log(cursor, "parseUpdateExpr (loop:%v) evaluating operand...", str)
+		*cursor = 0
+		operand, err := p.parseUnaryOperator(cursor)
+		if err != nil {
+			p.log(cursor, "parseUpdateExpr (loop:%v) operand eval rejected: %v", str, err)
+			return nil, err
+			// break
+		}
+		p.log(cursor, "parseUpdateExpr (loop:%v) operand eval accepted: %v", str, operand)
+
+		// found a valid operand, walk it
+		p.advanceBy(*cursor)
+		expr = &ExprUnaryOp{
+			operator: operator.T,
+			operand:  operand,
+		}
+		p.log(cursor, "parseUpdateExpr (loop:%v) expr: %v", str, expr.PrettyPrint())
+	}
+
+	if expr == nil {
+		p.log(cursor, "parseUpdateExpr returning (REJ): expr nil")
+		return nil, fmt.Errorf("parseUpdateExpr rejected")
+	}
+
+	p.log(cursor, "parseUpdateExpr returning (ACC): %v", expr.PrettyPrint())
+	return expr, nil
+}
+
+func (p *Parser) parseLeftHandSideExpr(cursor *int) (AstNode, error) {
+	// parse (NewExpression)
+	// NewExpression = MemberExpression | "new" NewExpression
+	memberExpr, err := p.parsePrimaryExpr(cursor)
+	if err == nil {
+		return memberExpr, nil
+	}
+
+	var expr *ExprNew
+	for p.matchAny([]lex.TokenType{lex.TNew}...) {
+		p.log(cursor, "parseNewExpr (loop) evaluating callee...")
+		*cursor = 0
+		callee, err := p.parsePrimaryExpr(cursor)
+		if err != nil {
+			p.log(cursor, "parseNewExpr (loop) callee eval rejected: %v", err)
+			return nil, err
+			// break
+		}
+		p.log(cursor, "parseNewExpr (loop) callee eval accepted: %v", callee)
+
+		// found a valid operand, walk it
+		p.advanceBy(*cursor)
+		expr = &ExprNew{
+			callee: callee,
+		}
+		p.log(cursor, "parseNewExpr (loop) expr: %v", expr.PrettyPrint())
+	}
+
+	if expr == nil {
+		p.log(cursor, "parseNewExpr returning (REJ): expr nil")
+		return nil, fmt.Errorf("parseNewExpr rejected")
+	}
+
+	p.log(cursor, "parseNewExpr returning (ACC): %v", expr.PrettyPrint())
+	return expr, nil
+}
+
+func (p *Parser) parseMemberExpr(cursor *int) (AstNode, error) {
+	return nil, nil
+
+}
+
+// -------------
+// ExprPrimary
+// -------------
+func (p *Parser) parsePrimaryExpr(cursor *int) (AstNode, error) {
+	reject := false
+
+	// current token position
+	// some statement here
+	// ˆ
+	// p.cursor: 0
+	token, err := p.peekN(*cursor)
+	if err != nil {
+		return nil, err
+	}
+
+	p.log(cursor, "primaryExpr ENTER: %v", token)
+	// in primary expressions, we first process the operator
+	var primaryExpr AstNode
+	switch token.T {
+	case lex.TIdentifier:
+		primaryExpr = &ExprIdentifierReference{
+			reference: token.Lexeme,
+		}
+	case lex.TNumericLiteral:
+		num, err := strconv.ParseFloat(token.Lexeme, 64)
+		if err != nil {
+			return nil, err
+		}
+		primaryExpr = &ExprNumeric{
+			value: num,
+		}
+	case lex.TStringLiteral_SingleQuote:
+		primaryExpr = &ExprStringLiteral{
+			value: token.Lexeme,
+		}
+	case lex.TStringLiteral_DoubleQuote:
+		primaryExpr = &ExprStringLiteral{
+			value: token.Lexeme,
+		}
+	case lex.TTrue:
+		primaryExpr = &ExprBoolean{
+			value: true,
+		}
+	case lex.TFalse:
+		primaryExpr = &ExprBoolean{
+			value: false,
+		}
+	case lex.TNull:
+		primaryExpr = &ExprNullLiteral{}
+	case lex.TUndefined:
+		primaryExpr = &ExprUndefinedLiteral{}
+	default:
+		reject = true
+		// not implemented yet
+	}
+
+	if reject {
+		p.log(cursor, "primaryExpr returning (REJ): %v", token)
+		return nil, errNotPrimaryExpr
+	}
+
+	*cursor = *cursor + 1
+	p.log(cursor, "primaryExpr returning (ACC): %v", primaryExpr.PrettyPrint())
+	return primaryExpr, nil
+}

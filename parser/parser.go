@@ -2,6 +2,7 @@ package parser
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ruiconti/gojs/internal"
 	"github.com/ruiconti/gojs/lex"
@@ -53,6 +54,20 @@ func (p *Parser) peekN(n int) (lex.Token, error) {
 		return lex.Token{}, errors.New("EOF")
 	}
 	return p.seq[p.cursor+n], nil
+}
+
+func (p *Parser) log(cursor *int, msg string, format ...interface{}) {
+	if cursor == nil || *cursor < 0 {
+		*cursor = -1
+	}
+	fmsg := fmt.Sprintf(msg, format...)
+	if p.isEOF() {
+		p.logger.Debug("[%d:%d] (EOF) %s", p.cursor, *cursor, fmsg)
+	} else {
+		current := p.peek()
+		tname := lex.ResolveName(current.T)
+		p.logger.Debug("[%d:%d] [%v:%v] %s", p.cursor, *cursor, tname, current.Lexeme, fmsg)
+	}
 }
 
 func (p *Parser) matchAny(types ...lex.TokenType) bool {
@@ -151,6 +166,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		node, err := p.parseExpr(&cursor)
 		if err == nil {
 			rootNode.children = append(rootNode.children, node)
+			p.logger.Debug("[%d:%d] parser:root ACC: %s", p.cursor, cursor, node.PrettyPrint())
 		} else {
 			p.logger.Debug("[%d:%d] parser:root ERR: %s", p.cursor, cursor, err)
 		}
@@ -168,25 +184,25 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		}
 
 		// unary operator expression
-		if isUnaryOperator(token) {
-			node, err := p.parseUnaryOperator(&cursor)
-			if err == nil {
-				rootNode.children = append(rootNode.children, node)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
-				p.cursor += cursor // accept the cursor
-				continue
-			}
-		}
+		// if isUnaryOperator(token) {
+		// 	node, err := p.parseUnaryOperator(&cursor)
+		// 	if err == nil {
+		// 		rootNode.children = append(rootNode.children, node)
+		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+		// 		p.cursor += cursor // accept the cursor
+		// 		continue
+		// 	}
+		// }
 		// update expression
-		if isUpdateExpression(token) {
-			node, err := p.parseUpdateExpr(&cursor)
-			if err == nil {
-				rootNode.children = append(rootNode.children, node)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
-				p.cursor += cursor // accept the cursor
-				continue
-			}
-		}
+		// if isUpdateExpression(token) {
+		// 	node, err := p.parseUpdateExpr(&cursor)
+		// 	if err == nil {
+		// 		rootNode.children = append(rootNode.children, node)
+		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+		// 		p.cursor += cursor // accept the cursor
+		// 		continue
+		// 	}
+		// }
 
 		p.cursor++
 	}
