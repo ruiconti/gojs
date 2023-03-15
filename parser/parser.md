@@ -59,21 +59,36 @@ Epsilon expressions are removed for brevity.
 --
 -- Expr
 --
-Expr  = AssignExpr | Expr'
-Expr' = "," AssignExpr Expr' | Epsilon
+Expr  =
+  | AssignExpr
+  | Expr'
+Expr' = 
+  | "," AssignExpr Expr'
+  | Epsilon
 
 -- AssignExpr
-AssignExpr = CondExpr | YieldExpr | ArrowFunc | LeftHandSideExpr | LeftHandSideExpr "=" AssignExpr | LeftHandSideExpr ("=" | "+=" | "*=" | "/=" | "|=" | "&=" | "&&=") AssignExpr
+AssignExpr =
+  | CondExpr
+  | YieldExpr
+  | ArrowFunc
+  | LeftHandSideExpr
+  | LeftHandSideExpr "=" AssignExpr
+  | LeftHandSideExpr ("=" | "+=" | "*=" | "/=" | "|=" | "&=" | "&&=") AssignExpr
 
 -- ..branching off CondExpr ::
 -- CondExpr
 --
-CondExpr  = LogOrExpr | LogOrExpr "?" Expr ":" AssignExpr
-LogOrExpr = LogOrExpr "||" LogAndExpr | LogAndExpr
+CondExpr  = 
+  | LogOrExpr
+  | LogOrExpr "?" Expr ":" AssignExpr
+LogOrExpr = 
+  | LogOrExpr "||" LogAndExpr
+  | LogAndExpr
 
 -- LogOrExpr
-LogOrExpr  = LogAndExpr LogOrExpr'
-LogOrExpr' = "||" LogAndExpr LogOrExpr'
+LogOrExpr  =
+  | LogAndExpr LogOrExpr'
+  | "||" LogAndExpr LogOrExpr'
 
 -- LogAndExpr
 LogAndExpr  = BitOrExpr LogAndExpr'
@@ -112,37 +127,60 @@ MultiplicativeExpr = ExponentialExpr MultiplicativeExpr'
 MultiplicativeExpr' = ("*" | "/", "%") ExponentialExpr MultiplicativeExpr'
 
 -- ExponentialExpr
-ExponentialExpr = UnaryExpr | UpdateExpr "**" UnaryExpr
+ExponentialExpr = 
+  | UnaryExpr
+  | UpdateExpr "**" UnaryExpr
 
 -- UnaryExpr
-UnaryExpr = UpdateExpr | ("delete" | "void" | "typeof" | "+" | "-" | "~" | "!") UnaryExpr
+UnaryExpr =
+  | UpdateExpr
+  | ("delete" | "void" | "typeof" | "+" | "-" | "~" | "!") UnaryExpr
 
 -- UpdateExpr
-UpdateExpr = LeftHandSideExpr | LeftHandSideExpr ("++" | "--") | ("++" | "--") LeftHandSideExpr
+UpdateExpr =
+  | LeftHandSideExpr
+  | LeftHandSideExpr ("++" | "--")
+  | ("++" | "--") LeftHandSideExpr
 
 -- LeftHandSideExpr
-LeftHandSideExpr = NewExpr | CallExpr
+LeftHandSideExpr =
+  | NewExpr 
+  | CallExpr
 
 -- ..branching into NewExpr ::
 -- NewExpr
-NewExpr = MemberExpr | "new" NewExpr
+NewExpr = 
+  | MemberExpr
+  | "new" NewExpr
 
 -- MemberExpr
-MemberExpr = PrimaryExpr | MemberExpr "[" Expr "]" | MemberExpr "." IdentifierName | MemberExpr TemplateLiteral | SuperProperty | SuperCall
+MemberExpr = 
+  | PrimaryExpr
+  | MemberExpr "[" Expr "]"
+  | MemberExpr "." IdentifierName
+  | MemberExpr TemplateLiteral
+  | SuperProperty
+  | SuperCall
 
-$$$
-A -> A \alpha | \beta
-..
-A -> \beta A'
-A' -> \alpha A'
-$$$
+-- MemberExpr decomposed
 MemberExpr = "[" Expr "]" MemberExpr'
 MemberExpr' = "." IdentifierName MemberExpr''
 MemberExpr'' = PrimaryExpr MemberExpr'''
 
 -- ..branching into PrimaryExpr ::
 -- PrimaryExpr
-PrimaryExpr = "this" | Identifier | Literal | ArrayLiteral | ObjectLiteral | FunctionExpr | ClassExpr | GeneratorExpr | RegularExpr | TemplateLiteral | "(" Expr ")"
+PrimaryExpr = 
+  | "this"
+  | Identifier
+  | Literal
+  | ArrayLiteral
+  | ObjectLiteral
+  | FunctionExpr
+  | ClassExpr
+  | GeneratorExpr
+  | RegularExpr
+  | TemplateLiteral
+  | "(" Expr ")"
 
 -- and we are back to expanding Expr again
 --

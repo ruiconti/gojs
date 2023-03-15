@@ -270,16 +270,16 @@ func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
 func (p *Parser) parseLeftHandSideExpr(cursor *int) (AstNode, error) {
 	// parse (NewExpression)
 	// NewExpression = MemberExpression | "new" NewExpression
-	memberExpr, err := p.parsePrimaryExpr(cursor)
+	memberExpr, err := p.parseMemberExpr(cursor)
 	if err == nil {
 		return memberExpr, nil
 	}
 
 	var expr *ExprNew
-	for p.matchAny([]lex.TokenType{lex.TNew}...) {
+	for p.matchAny(lex.TNew) {
 		p.log(cursor, "parseNewExpr (loop) evaluating callee...")
 		*cursor = 0
-		callee, err := p.parsePrimaryExpr(cursor)
+		callee, err := p.parseMemberExpr(cursor)
 		if err != nil {
 			p.log(cursor, "parseNewExpr (loop) callee eval rejected: %v", err)
 			return nil, err
@@ -305,8 +305,69 @@ func (p *Parser) parseLeftHandSideExpr(cursor *int) (AstNode, error) {
 }
 
 func (p *Parser) parseMemberExpr(cursor *int) (AstNode, error) {
-	return nil, nil
+	p.log(cursor, "parseMemberExpr ENTER")
+	primaryExpr, err := p.parsePrimaryExpr(cursor)
+	if err != nil {
+		p.log(cursor, "parseMemberExpr REJ: %v", err)
+		return nil, err
+		// try to parse SuperCall or SuperProperty
+	}
 
+	exprMember := primaryExpr
+	parsed := false
+	p.advanceBy(1)
+	for p.matchAny(lex.TPeriod, lex.TLeftBracket) {
+		current, err := p.peekN(-1)
+		p.log(cursor, "parseMemberExpr (loop) matched %v", lex.ResolveName(current.T))
+		if err != nil {
+			p.log(cursor, "parseMemberExpr (loop) leaving early:%v", err)
+			break
+			// todo: error
+		}
+
+		switch current.T {
+		case lex.TPeriod:
+			parsed = true
+			p.log(cursor, "parseMemberExpr (loop) matched dot")
+			if p.matchAny(lex.TIdentifier) {
+				identifier, _ := p.peekN(-1)
+				exprMember = &ExprMemberAccess{
+					object: exprMember,
+					property: &ExprIdentifierReference{
+						reference: identifier.Lexeme,
+					},
+				}
+				p.log(cursor, "parseMemberExpr (loop:ACC) %v", exprMember.PrettyPrint())
+			} else {
+				p.log(cursor, "parseMemberExpr (loop:REJ) parsed dot but failed to find identifier")
+				break
+			}
+		case lex.TLeftBracket:
+			parsed = true
+			p.log(cursor, "parseMemberExpr (loop) matched left brace")
+			expr, err := p.parseExpr(cursor)
+			if err == nil {
+				if p.matchAny(lex.TRightBracket) {
+					exprMember = &ExprMemberAccess{
+						object:   exprMember,
+						property: expr,
+					}
+					p.log(cursor, "parseMemberExpr (loop:ACC) %v", exprMember.PrettyPrint())
+				}
+			} else {
+				p.log(cursor, "parseMemberExpr (loop) leaving..")
+				break
+			}
+
+		}
+	}
+
+	p.log(cursor, "parseMemberExpr ACC: %v", primaryExpr.PrettyPrint())
+	if !parsed {
+		p.advanceBy(-1)
+	}
+	// it's just a primary expression
+	return exprMember, nil
 }
 
 // -------------
