@@ -19,7 +19,7 @@ func prettyPrintMap(tokens []lex.Token) ([]string, error) {
 }
 
 func main() {
-	s := bufio.NewScanner(os.Stdin)
+	s := bufio.NewLexer(os.Stdin)
 	// fmt.Printf("> ")
 	logger := gojs.NewSimpleLogger(gojs.ModeInfo | gojs.ModeWarn | gojs.ModeError)
 	for {
@@ -29,8 +29,8 @@ func main() {
 			break
 		}
 		src := s.Text()
-		scanner := lex.NewScanner(src, logger)
-		tokens, scanErr := scanner.Scan()
+		lexer := lex.NewLexer(src, logger)
+		tokens, scanErr := lexer.ScanAll()
 		if scanErr != nil {
 			fmt.Printf("SyntaxError: %s is not valid: %s.", src, scanErr)
 			continue

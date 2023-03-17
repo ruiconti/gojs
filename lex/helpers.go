@@ -9,29 +9,6 @@ import (
 	"github.com/ruiconti/gojs/internal"
 )
 
-// ResolveName returns the name of a token type.
-func resolveName(t TokenType) (string, error) {
-	dicts := []map[TokenType]string{
-		LiteralNames,
-		ReservedWordNames,
-		PunctuationNames,
-	}
-	for _, dict := range dicts {
-		if name, ok := dict[t]; ok {
-			return name, nil
-		}
-	}
-	return "", fmt.Errorf("token name not found: %d", t)
-}
-
-func ResolveName(t TokenType) string {
-	tokName, err := resolveName(t)
-	if err != nil {
-		return "Unknown"
-	}
-	return tokName
-}
-
 func assertLiterals(t *testing.T, logger internal.Logger, got, expected []Token) {
 	assertInternal(
 		t,
@@ -56,16 +33,13 @@ func assertTokens(t *testing.T, logger internal.Logger, got, expected []Token) {
 		t,
 		logger,
 		got,
-		expected, func(a, b Token) bool { return a.Lexeme == b.Lexeme && a.Literal == b.Literal && a.T == b.T },
+		expected, func(a, b Token) bool { return a.Lexeme == b.Lexeme && a.Literal == b.Literal && a.Type == b.Type },
 		func(a Token) string {
-			if a.Literal == nil {
-				return ""
-			}
-			return fmt.Sprintf("%v (%v)", a.Literal, ResolveName(a.T))
+			return fmt.Sprintf("%v (%v)", a.Lexeme, a.Type.S())
 		},
 		// inline print
 		func(a Token) string {
-			return fmt.Sprintf("%v ", a.Literal)
+			return fmt.Sprintf("%v ", a.Lexeme)
 		},
 	)
 }
@@ -110,7 +84,7 @@ func assertInternal(
 	for i, expectedToken := range expected {
 		var gotToken Token
 		if i >= len(got) {
-			gotToken = Token{T: TEOF, Lexeme: `<EOF>`, Literal: nil, Line: 0, Column: 0}
+			gotToken = Token{Type: TUnknown, Lexeme: `<EOF>`, Literal: nil, Line: 0, Column: 0}
 		} else {
 			gotToken = got[i]
 		}
@@ -123,11 +97,11 @@ func assertInternal(
 
 	if failure {
 		strGot, strExpect := strings.Builder{}, strings.Builder{}
-		logger.EmitStdout()
+		logger.DumpLogs()
 		for i, expectedToken := range expected {
 			var gotToken Token
 			if i >= len(got) {
-				gotToken = Token{T: TEOF, Lexeme: ``, Literal: nil, Line: 0, Column: 0}
+				gotToken = Token{Type: TUnknown, Lexeme: ``, Literal: nil, Line: 0, Column: 0}
 			} else {
 				gotToken = got[i]
 			}
@@ -155,12 +129,18 @@ func contains(arr []int, val int) bool {
 	return false
 }
 
-func assertErrors(t *testing.T, logger internal.Logger, eexp, egot error, in string, out []Token) {
-	if !errors.Is(egot, eexp) {
-		logger.EmitStdout()
-		t.Errorf("expected error %q, got %v", eexp, egot)
+func assertErrors(t *testing.T, logger internal.Logger, exp error, got []error, in string, out []Token) {
+	found := false
+	for _, e := range got {
+		if errors.Is(exp, e) {
+			found = true
+		}
+	}
+	if found {
+		logger.DumpLogs()
+		t.Errorf("expected error %q, got %+v", exp, got)
 		if len(out) > 0 {
-			t.Errorf("values for reference: in=%q, out=%v", in, out)
+			t.Errorf("values for reference:\nin=%q,\nout=%v", in, out)
 		}
 	}
 }

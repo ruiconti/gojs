@@ -1,7 +1,7 @@
 package lex
 
 type Token struct {
-	T       TokenType
+	Type    TokenType
 	Lexeme  string
 	Literal interface{}
 	Line    int
@@ -12,6 +12,21 @@ type Token struct {
 // https://262.ecma-international.org/#sec-tokens
 // Tokens
 type TokenType int
+
+func (typ *TokenType) S() string {
+	dicts := []map[TokenType]string{
+		LiteralNames,
+		ReservedWordNames,
+		PunctuationNames,
+	}
+	for _, dict := range dicts {
+		if name, ok := dict[*typ]; ok {
+			return name
+		}
+	}
+
+	return "Unknown"
+}
 
 const (
 	TIdentifier TokenType = iota
@@ -48,7 +63,6 @@ const (
 	TEllipsis
 	TElse
 	TEnum
-	TEOF
 	TEqual
 	TExport
 	TExtends
@@ -121,6 +135,7 @@ const (
 	TXor
 	TXorAssign
 	TYield
+	TWhitespace
 )
 
 var LiteralNames = map[TokenType]string{
@@ -173,7 +188,6 @@ var ReservedWordNames = map[TokenType]string{
 	TWhile:      "while",
 	TWith:       "with",
 	TYield:      "yield",
-	TEOF:        "TEOF",
 }
 
 var PunctuationNames = map[TokenType]string{
@@ -232,4 +246,5 @@ var PunctuationNames = map[TokenType]string{
 	TSlash:                    "/",
 	TSlashAssign:              "/=",
 	TTilde:                    "~",
+	TWhitespace:               "<ws>",
 }

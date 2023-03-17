@@ -11,9 +11,9 @@ func TestParseArray_Simple(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[,,, ,,   , ]`
 		expected := &ExprRootNode{
-			children: []AstNode{
+			children: []Node{
 				&ExprArray{
-					elements: []AstNode{
+					elements: []Node{
 						&ExprNullLiteral{},
 						&ExprNullLiteral{},
 						&ExprNullLiteral{},
@@ -31,9 +31,9 @@ func TestParseArray_Simple(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[1,2,true,\u3340xa,undefined, null,'foo', "bar",]`
 		expected := &ExprRootNode{
-			children: []AstNode{
+			children: []Node{
 				&ExprArray{
-					elements: []AstNode{
+					elements: []Node{
 						&ExprNumeric{
 							value: 1,
 						},

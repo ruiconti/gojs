@@ -19,7 +19,7 @@ type Logger interface {
 	Info(string, ...any)
 	Error(string, ...any)
 	Warn(string, ...any)
-	EmitStdout()
+	DumpLogs()
 }
 
 type SimpleLogger struct {
@@ -71,9 +71,9 @@ func (l *SimpleLogger) Warn(format string, args ...any) {
 
 func (l *SimpleLogger) Error(format string, args ...any) {
 	s := fmt.Sprintf(format, args...)
-	l.writer.WriteString(fmt.Sprintf("ERROR: %s", s))
+	l.writer.WriteString(fmt.Sprintf("ERROR:%s", s))
 }
 
-func (l *SimpleLogger) EmitStdout() {
+func (l *SimpleLogger) DumpLogs() {
 	l.writer.WriteToStdout()
 }

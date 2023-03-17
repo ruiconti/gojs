@@ -10,24 +10,24 @@ import (
 
 type Expr interface{}
 
-func (p *Parser) parseExpr(c *int) (AstNode, error) {
+func (p *Parser) parseExpr(c *int) (Node, error) {
 	return p.parseAssignExpr(c)
 }
 
-func (p *Parser) parseAssignExpr(c *int) (AstNode, error) {
+func (p *Parser) parseAssignExpr(c *int) (Node, error) {
 	return p.parseCondExpr(c)
 }
 
-func (p *Parser) parseCondExpr(c *int) (AstNode, error) {
+func (p *Parser) parseCondExpr(c *int) (Node, error) {
 	return p.parseLogOrExpr(c)
 }
 
 func (p *Parser) parseBinaryExprGeneric(
 	cursor *int,
 	operators []lex.TokenType,
-	left func(*int) (AstNode, error),
-	right func(*int) (AstNode, error),
-) (AstNode, error) {
+	left func(*int) (Node, error),
+	right func(*int) (Node, error),
+) (Node, error) {
 	var opstr strings.Builder
 	for _, op := range operators {
 		opstr.Write([]byte(lex.ResolveName(op)))
@@ -79,7 +79,7 @@ func (p *Parser) parseBinaryExprGeneric(
 	return expr, nil
 }
 
-func (p *Parser) parseLogOrExpr(c *int) (AstNode, error) {
+func (p *Parser) parseLogOrExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TLogicalOr},
@@ -88,7 +88,7 @@ func (p *Parser) parseLogOrExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseAndExpr(c *int) (AstNode, error) {
+func (p *Parser) parseAndExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TLogicalAnd},
@@ -97,7 +97,7 @@ func (p *Parser) parseAndExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseBitOrExpr(c *int) (AstNode, error) {
+func (p *Parser) parseBitOrExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TOr},
@@ -106,7 +106,7 @@ func (p *Parser) parseBitOrExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseBitXorExpr(c *int) (AstNode, error) {
+func (p *Parser) parseBitXorExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TXor},
@@ -115,7 +115,7 @@ func (p *Parser) parseBitXorExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseBitAndExpr(c *int) (AstNode, error) {
+func (p *Parser) parseBitAndExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TAnd},
@@ -124,7 +124,7 @@ func (p *Parser) parseBitAndExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseEqualityExpr(c *int) (AstNode, error) {
+func (p *Parser) parseEqualityExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual},
@@ -133,7 +133,7 @@ func (p *Parser) parseEqualityExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseRelationalExpr(c *int) (AstNode, error) {
+func (p *Parser) parseRelationalExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TGreaterThan, lex.TGreaterThanEqual, lex.TLessThan, lex.TLessThanEqual, lex.TInstanceof, lex.TIn},
@@ -142,7 +142,7 @@ func (p *Parser) parseRelationalExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseShiftExpr(c *int) (AstNode, error) {
+func (p *Parser) parseShiftExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift},
@@ -151,7 +151,7 @@ func (p *Parser) parseShiftExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseAdditiveExpr(c *int) (AstNode, error) {
+func (p *Parser) parseAdditiveExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TPlus, lex.TMinus},
@@ -160,7 +160,7 @@ func (p *Parser) parseAdditiveExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseMultiplicativeExpr(c *int) (AstNode, error) {
+func (p *Parser) parseMultiplicativeExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent},
@@ -169,7 +169,7 @@ func (p *Parser) parseMultiplicativeExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseExponentialExpr(c *int) (AstNode, error) {
+func (p *Parser) parseExponentialExpr(c *int) (Node, error) {
 	return p.parseBinaryExprGeneric(
 		c,
 		[]lex.TokenType{lex.TStarStar},
@@ -178,7 +178,7 @@ func (p *Parser) parseExponentialExpr(c *int) (AstNode, error) {
 	)
 }
 
-func (p *Parser) parseUnaryOperator(cursor *int) (AstNode, error) {
+func (p *Parser) parseUnaryOperator(cursor *int) (Node, error) {
 	// UnaryExpr = UpdateExpr | ("delete" | "void" | "typeof" | "+" | "-" | "~" | "!") UnaryExpr
 	// parse (UpdateExpression)
 	p.log(cursor, "parseUnaryExpr ENTER")
@@ -223,9 +223,9 @@ func (p *Parser) parseUnaryOperator(cursor *int) (AstNode, error) {
 	return expr, nil
 }
 
-func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
+func (p *Parser) parseUpdateExpr(cursor *int) (Node, error) {
 	p.log(cursor, "parseUpdateExpr ENTER")
-	var expr AstNode
+	var expr Node
 
 	// parse (LeftHandSideExpression)
 	leftExpr, err := p.parseLeftHandSideExpr(cursor)
@@ -267,7 +267,7 @@ func (p *Parser) parseUpdateExpr(cursor *int) (AstNode, error) {
 	return expr, nil
 }
 
-func (p *Parser) parseLeftHandSideExpr(cursor *int) (AstNode, error) {
+func (p *Parser) parseLeftHandSideExpr(cursor *int) (Node, error) {
 	// parse (NewExpression)
 	// NewExpression = MemberExpression | "new" NewExpression
 	memberExpr, err := p.parseMemberExpr(cursor)
@@ -304,7 +304,7 @@ func (p *Parser) parseLeftHandSideExpr(cursor *int) (AstNode, error) {
 	return expr, nil
 }
 
-func (p *Parser) parseMemberExpr(cursor *int) (AstNode, error) {
+func (p *Parser) parseMemberExpr(cursor *int) (Node, error) {
 	p.log(cursor, "parseMemberExpr ENTER")
 	primaryExpr, err := p.parsePrimaryExpr(cursor)
 	if err != nil {
@@ -325,7 +325,7 @@ func (p *Parser) parseMemberExpr(cursor *int) (AstNode, error) {
 			// todo: error
 		}
 
-		switch current.T {
+		switch current.Type {
 		case lex.TPeriod:
 			parsed = true
 			p.log(cursor, "parseMemberExpr (loop) matched dot")
@@ -373,7 +373,7 @@ func (p *Parser) parseMemberExpr(cursor *int) (AstNode, error) {
 // -------------
 // ExprPrimary
 // -------------
-func (p *Parser) parsePrimaryExpr(cursor *int) (AstNode, error) {
+func (p *Parser) parsePrimaryExpr(cursor *int) (Node, error) {
 	reject := false
 
 	// current token position
@@ -387,8 +387,8 @@ func (p *Parser) parsePrimaryExpr(cursor *int) (AstNode, error) {
 
 	p.log(cursor, "primaryExpr ENTER: %v", token)
 	// in primary expressions, we first process the operator
-	var primaryExpr AstNode
-	switch token.T {
+	var primaryExpr Node
+	switch token.Type {
 	case lex.TIdentifier:
 		primaryExpr = &ExprIdentifierReference{
 			reference: token.Lexeme,

@@ -10,7 +10,7 @@ import (
 const EArrayLiteral ExprType = "ENodeNil"
 
 type ExprArray struct {
-	elements []AstNode
+	elements []Node
 }
 
 func (e *ExprArray) Source() string {
@@ -50,8 +50,8 @@ func (e *ExprArray) PrettyPrint() string {
 	return src.String()
 }
 
-func (p *Parser) parseArray(cursor *int) (AstNode, error) {
-	if p.peek().T != lex.TLeftBracket {
+func (p *Parser) parseArray(cursor *int) (Node, error) {
+	if p.peek().Type != lex.TLeftBracket {
 		return nil, errors.New("Expected '['")
 	}
 
@@ -68,7 +68,7 @@ loop:
 			return nil, err
 		}
 
-		switch token.T {
+		switch token.Type {
 		case lex.TRightBracket:
 			// end of array
 			*cursor = *cursor + 1
@@ -79,7 +79,7 @@ loop:
 			// 1. the next token is a right bracket
 			// 2. the next token is a comma
 			if nextToken, err := p.peekN(*cursor + 1); err == nil {
-				if nextToken.T == lex.TRightBracket || nextToken.T == lex.TComma {
+				if nextToken.Type == lex.TRightBracket || nextToken.Type == lex.TComma {
 					*cursor = *cursor + 1
 					arrExpr.elements = append(arrExpr.elements, &ExprNullLiteral{})
 					continue

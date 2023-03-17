@@ -12,7 +12,7 @@ func TestPrimaryLiterals(t *testing.T) {
 		src := "123 true false null undefined \"foo\" 'bar'"
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
-			children: []AstNode{
+			children: []Node{
 				&ExprNumeric{
 					value: 123,
 				},
@@ -40,7 +40,7 @@ func TestPrimaryLiterals(t *testing.T) {
 		src := `\u3034baz; \u9023\u4930\u1102x; b\u400e\u99a0`
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
-			children: []AstNode{
+			children: []Node{
 				&ExprIdentifierReference{
 					reference: `\u3034baz`,
 				},
@@ -63,7 +63,7 @@ func TestExprIdentifierReference(t *testing.T) {
 
 	got := Parse(logger, src)
 	exp := &ExprRootNode{
-		children: []AstNode{
+		children: []Node{
 			&ExprIdentifierReference{
 				reference: "foo",
 			},

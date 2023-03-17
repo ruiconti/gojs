@@ -12,7 +12,7 @@ import (
 // RootNode: Artificial node
 // --------------------------
 type ExprRootNode struct {
-	children []AstNode
+	children []Node
 }
 
 func (e *ExprRootNode) Source() string {
@@ -79,7 +79,7 @@ var LiteralsTokens = []lex.TokenType{
 
 func isLiteralToken(token lex.Token) bool {
 	for _, t := range LiteralsTokens {
-		if token.T == t {
+		if token.Type == t {
 			return true
 		}
 	}

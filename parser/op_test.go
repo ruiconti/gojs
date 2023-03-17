@@ -16,7 +16,7 @@ func TestUnaryOp(t *testing.T) {
 			src := fmt.Sprintf("%s foo", operatorName)
 			got := Parse(logger, src)
 			exp := &ExprRootNode{
-				children: []AstNode{
+				children: []Node{
 					&ExprUnaryOp{
 						operand: &ExprIdentifierReference{
 							reference: "foo",
@@ -39,7 +39,7 @@ func TestUpdateExpr(t *testing.T) {
 		for _, operator := range UpdateOperators {
 			src := fmt.Sprintf("%s foo", lex.ResolveName(operator))
 			exp := &ExprRootNode{
-				children: []AstNode{
+				children: []Node{
 					&ExprUnaryOp{
 						operand: &ExprIdentifierReference{
 							reference: "foo",

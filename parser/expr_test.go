@@ -8,7 +8,7 @@ import (
 	"github.com/ruiconti/gojs/lex"
 )
 
-func binExpr(left, right AstNode, op lex.TokenType) *ExprBinaryOp {
+func binExpr(left, right Node, op lex.TokenType) *ExprBinaryOp {
 	return &ExprBinaryOp{
 		left:     left,
 		right:    right,
@@ -50,12 +50,12 @@ func TestBinaryOperators(t *testing.T) {
 		for _, binOperator := range binOperators {
 			lexeme := lex.ResolveName(binOperator)
 			src := fmt.Sprintf(`a %s b %s c %s d %s e %s f`, lexeme, lexeme, lexeme, lexeme, lexeme)
-			binExpr := func(left, right AstNode) *ExprBinaryOp {
+			binExpr := func(left, right Node) *ExprBinaryOp {
 				return binExpr(left, right, binOperator)
 			}
 
 			expected := &ExprRootNode{
-				children: []AstNode{
+				children: []Node{
 					binExpr(
 						binExpr(
 							binExpr(
@@ -191,7 +191,7 @@ func TestBinaryOperators(t *testing.T) {
 	// TODO: this should err because the grammar doesn't support this operation
 	// TODO: without parentheses
 	// t.Run("unary operation has precedence over exponential operation", func(t *testing.T) {
-	// 	multOpExpr := func(left AstNode, right AstNode) *ExprBinaryOp {
+	// 	multOpExpr := func(left Node, right Node) *ExprBinaryOp {
 	// 		return &ExprBinaryOp{
 	// 			operator: lex.TStarStar,
 	// 			left:     left,
@@ -213,7 +213,7 @@ func TestBinaryOperators(t *testing.T) {
 	// 		src := fmt.Sprintf("%s a ** b ** %s c ** d ** %s e ** f", lexeme, lexeme, lexeme)
 	// 		// equals: delete a ** (b ** (delete c ** (d ** (delete e ** f) ) ) )
 	// 		exp := &ExprRootNode{
-	// 			children: []AstNode{
+	// 			children: []Node{
 	// 				multOpExpr(
 	// 					unaryOpExpr("a"),
 	// 					multOpExpr(
@@ -246,7 +246,7 @@ func TestBinaryOperators(t *testing.T) {
 			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
 			got := Parse(logger, src)
 			exp := &ExprRootNode{
-				children: []AstNode{
+				children: []Node{
 					&ExprUnaryOp{
 						operand: &ExprUnaryOp{
 							operand: &ExprUnaryOp{
@@ -275,7 +275,7 @@ func TestBinaryOperators(t *testing.T) {
 				src := fmt.Sprintf("%s %s foo", lex.ResolveName(unaryOp), lex.ResolveName(updateOp))
 				got := Parse(logger, src)
 				exp := &ExprRootNode{
-					children: []AstNode{
+					children: []Node{
 						&ExprUnaryOp{
 							operator: unaryOp,
 							operand: &ExprUnaryOp{
@@ -297,7 +297,7 @@ func TestBinaryOperators(t *testing.T) {
 		src := fmt.Sprintf("new foo.bar[baz][foo2].bar2")
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
-			children: []AstNode{
+			children: []Node{
 				&ExprNew{
 					callee: &ExprMemberAccess{
 						object: &ExprMemberAccess{
@@ -330,12 +330,12 @@ func assertBinaryExprPrecedence(
 
 	for _, opHigher := range opsHigherPrecedence {
 		lexemeHigherPrecedence := lex.ResolveName(opHigher)
-		binHigherExpr := func(left, right AstNode) *ExprBinaryOp {
+		binHigherExpr := func(left, right Node) *ExprBinaryOp {
 			return binExpr(left, right, opHigher)
 		}
 		for _, opLower := range opsLowerPrecedence {
 			lexemeLowerPrecedence := lex.ResolveName(opLower)
-			binLowerExpr := func(left, right AstNode) *ExprBinaryOp {
+			binLowerExpr := func(left, right Node) *ExprBinaryOp {
 				return binExpr(left, right, opLower)
 			}
 
@@ -351,7 +351,7 @@ func assertBinaryExprPrecedence(
 			// for example, if opLower is TPlus and opHigher is TRightShift
 			// equals to: ((a + (b / c)) + (d / e)) + f
 			expected := &ExprRootNode{
-				children: []AstNode{
+				children: []Node{
 					binLowerExpr(
 						binLowerExpr(
 							binLowerExpr(

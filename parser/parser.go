@@ -15,10 +15,8 @@ const (
 	EElision  ExprType = "EElision"
 )
 
-type AstNode interface {
-	Source() string
-	Type() ExprType
-	PrettyPrint() string
+type Node interface {
+	S() string
 }
 
 type Parser struct {
@@ -76,7 +74,7 @@ func (p *Parser) matchAny(types ...lex.TokenType) bool {
 	}
 
 	for _, t := range types {
-		if p.peek().T == t {
+		if p.peek().Type == t {
 
 			p.logger.Debug("[%d] matched %s, stepping 1..", p.cursor, lex.ResolveName(t))
 			p.advanceBy(1)
@@ -95,8 +93,8 @@ func NewParser(seq []lex.Token, logger *internal.SimpleLogger) *Parser {
 }
 
 func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
-	scanner := lex.NewScanner(src, logger)
-	tokens, err := scanner.Scan()
+	lexer := lex.NewLexer(src, logger)
+	tokens, err := lexer.ScanAll()
 	if err != nil {
 		logger.Error("Error scanning source: %s", err.Error())
 		panic(1)
@@ -108,7 +106,7 @@ func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
 
 func (p *Parser) parseTokens() *ExprRootNode {
 	rootNode := &ExprRootNode{
-		children: []AstNode{},
+		children: []Node{},
 	}
 	p.logger.Debug("PARSER ::")
 	for i, token := range p.seq {
@@ -119,7 +117,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 	defer func() {
 		stack := recover()
 		if stack != nil {
-			p.logger.EmitStdout()
+			p.logger.DumpLogs()
 			panic(stack)
 		}
 	}()
@@ -130,7 +128,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		token, err := p.peekN(cursor)
 		if lastToken == token {
 			p.logger.Debug("[%d:0] LOOP: bailing to prevent infinite loop", p.cursor)
-			p.logger.EmitStdout()
+			p.logger.DumpLogs()
 			break
 		} else {
 			lastToken = token
@@ -141,13 +139,13 @@ func (p *Parser) parseTokens() *ExprRootNode {
 			p.logger.Error("[%d:0] LOOP: %s", p.cursor, err.Error())
 			break
 		}
-		if token.T == lex.TSemicolon {
+		if token.Type == lex.TSemicolon {
 			// TODO: Ignoring semicolons for now
 			p.logger.Debug("[%d:0] LOOP:skipping (;)", p.cursor)
 		}
 
 		// [
-		if token.T == lex.TLeftBracket {
+		if token.Type == lex.TLeftBracket {
 			var c int
 			p.logger.Debug("c:%d (%d)", c, &c)
 			node, err := p.parseArray(&c)
@@ -173,7 +171,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 
 		// primary expressions
 		// id | await | yield | literals
-		if isLiteralToken(token) || token.T == lex.TIdentifier || token.T == lex.TAwait || token.T == lex.TYield || token.T == lex.TUndefined {
+		if isLiteralToken(token) || token.Type == lex.TIdentifier || token.Type == lex.TAwait || token.Type == lex.TYield || token.Type == lex.TUndefined {
 			node, err := p.parsePrimaryExpr(&cursor)
 			if err == nil {
 				rootNode.children = append(rootNode.children, node)

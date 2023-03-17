@@ -16,7 +16,7 @@ var errNotUnaryOperator = errors.New("current token is not an unary operator")
 var errNotUpdateOperator = errors.New("current token is not an update operator")
 
 type ExprUnaryOp struct {
-	operand  AstNode
+	operand  Node
 	operator lex.TokenType
 }
 
@@ -59,8 +59,8 @@ var UpdateOperators = []lex.TokenType{
 const EBinaryOp ExprType = "ExprBinaryOp"
 
 type ExprBinaryOp struct {
-	left     AstNode
-	right    AstNode
+	left     Node
+	right    Node
 	operator lex.TokenType
 }
 
@@ -82,7 +82,7 @@ func (e *ExprBinaryOp) PrettyPrint() string {
 const ENew ExprType = "ExprBinaryOp"
 
 type ExprNew struct {
-	callee AstNode
+	callee Node
 }
 
 func (e *ExprNew) Type() ExprType {
@@ -103,8 +103,8 @@ func (e *ExprNew) PrettyPrint() string {
 const EMemberAccess ExprType = "ExprBinaryOp"
 
 type ExprMemberAccess struct {
-	object   AstNode
-	property AstNode
+	object   Node
+	property Node
 }
 
 func (e *ExprMemberAccess) Type() ExprType {

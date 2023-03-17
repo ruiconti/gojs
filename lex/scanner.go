@@ -1,262 +1,245 @@
 package lex
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/ruiconti/gojs/internal"
 	gojs "github.com/ruiconti/gojs/internal"
 )
 
-var errEOF = fmt.Errorf("EOF")
-var errOOB = fmt.Errorf("out of bounds")
-var errNoLiteralAfterNumber = fmt.Errorf("no literal after number")
-var errUnexpectedToken = fmt.Errorf("unexpected token")
-var errDigitExpected = fmt.Errorf("digit expected")
-var errInfiniteLoop = fmt.Errorf("infinite loop detected")
+var ReservedKeywords = internal.MapInvert(ReservedWordNames)
 
-// TODO: below are untested
-var errUnterminatedStringLiteral = fmt.Errorf("unterminated string literal")
-var errBadEscapeSequence = fmt.Errorf("bad character escape sequence")
-var errInvalidNumericEscape = fmt.Errorf("invalid numeric escape")
+// Errors
+var (
+	errEOF                  = fmt.Errorf("EOF")
+	errNoLiteralAfterNumber = fmt.Errorf("no literal after number")
+	errUnexpectedToken      = fmt.Errorf("unexpected token")
+	// TODO: below are untested
+	errUnterminatedStringLiteral = fmt.Errorf("unterminated string literal")
+	errInvalidEscapedSequence    = errors.New("invalid escaped sequence")
+)
 
-type Scanner struct {
+const EOF rune = -1
+
+type Lexer struct {
 	// source string being scanned
 	src string
-	// offset of the current index of the current char
-	idxHead int
-	// offset of the last index of the current char
-	idxHeadLast int
-	// offset of the beginning of the current char
-	idxHeadStart int
 	// token slice
 	tokens []Token
 	// reference to the logging mechanism
 	logger *gojs.SimpleLogger
-	// errors
+	// offset of the beginning of the current char
+	srcCursor int
+	// offset of the current index of the current char
+	srcCursorHead int
+	// whether the cursor is out of bounds
+	srcCursorOOB bool
+	// last index of the source string
+	srcEnd int
+	// store errors found while scanning
 	errors []error
+
+	// TODO: implement proper positioning
+	line   int
+	column int
 }
 
-func (s *Scanner) hasErrors() bool {
-	return len(s.errors) > 0
-}
-
-func NewScanner(src string, logger *gojs.SimpleLogger) *Scanner {
+func NewLexer(src string, logger *gojs.SimpleLogger) *Lexer {
 	if logger == nil {
 		logger = gojs.NewSimpleLogger(gojs.ModeDebug)
 	}
-	return &Scanner{
-		src:          src,
-		logger:       logger,
-		idxHead:      0,
-		idxHeadStart: 0,
-		tokens:       []Token{},
+
+	return &Lexer{
+		src:           src,
+		logger:        logger,
+		srcCursor:     -2,
+		srcCursorHead: 0,
+		srcCursorOOB:  false,
+		srcEnd:        len(src) - 1,
+		tokens:        []Token{},
 	}
 }
 
-func (s *Scanner) advanceBy(n int) {
-	s.idxHeadLast = s.idxHead
-	s.idxHead += n
-}
+// PeekLoop wraps the usual for { Peek(); Next(); } loop
+// in a way to prevent infinite loops in a coordinated fashion
+func (s *Lexer) PeekLoop(callback func(rune) bool) {
+	var (
+		ch      rune
+		lastPos int
+	)
+	for {
+		ch = s.Peek()
+		lastPos = s.srcCursorHead
 
-func (s *Scanner) peek() rune {
-	return rune(s.src[s.idxHead])
-}
+		s.logger.Debug("%d: loop:%c", s.srcCursorHead, ch)
+		cont := callback(ch) // side-effect
 
-func (s *Scanner) peekN(n int) (rune, error) {
-	if s.idxHead+n < 0 {
-		return 0, errOOB
-	} else if s.idxHead+n >= len(s.src) {
-		return 0, errEOF
-	}
-	return rune(s.src[s.idxHead+n]), nil
-}
-
-func (s *Scanner) addTokenSafe(t TokenType) {
-	var lexeme string
-	if s.idxHead == s.idxHeadStart {
-		if t == TStringLiteral_DoubleQuote || t == TStringLiteral_SingleQuote {
-			// only string literals need this treatment
-			// see in strings parser for more context
-			lexeme = ""
-		} else {
-			lexeme = s.src[s.idxHeadStart : s.idxHead+1]
+		if !cont || s.srcCursorOOB {
+			break
 		}
+		if lastPos == s.srcCursorHead {
+			panic("infinite loop detected")
+		}
+	}
+}
+
+// Advance the cursor by 1 char
+func (s *Lexer) Next() {
+	s.Jump(1)
+}
+
+// Advance the cursor by N char
+func (s *Lexer) Jump(offset uint) {
+	width := s.srcCursorHead + int(offset)
+
+	if width > s.srcEnd {
+		s.srcCursorOOB = true
+		return
+	}
+
+	s.srcCursorHead = width
+	s.logger.Debug("%d: jump(offset:%d):%c", s.srcCursorHead, offset, s.Peek())
+	s.PrettyPrintSrc()
+}
+
+// 1-char look-ahead
+func (s *Lexer) Peek() rune {
+	return s.PeekN(0)
+}
+
+// N-char look-ahead
+func (s *Lexer) PeekN(offset uint) rune {
+	lookAhead := s.srcCursorHead + int(offset)
+	if lookAhead > s.srcEnd {
+		return EOF
+	}
+	return rune(s.src[lookAhead])
+}
+
+func (s *Lexer) CreateLiteralToken(typ TokenType) Token {
+	// try to parse it as a reserved word
+	var candidate string
+	if s.srcCursorHead == s.srcEnd && s.srcCursorOOB {
+		candidate = s.src[s.srcCursor:]
 	} else {
-		lexeme = s.src[s.idxHeadStart:s.idxHead]
-	}
-	s.logger.Debug("[%d] addTokenSafe -> %v (lex: %v, len: %d)", s.idxHead, ResolveName(t), lexeme, len(lexeme))
-	s.tokens = append(s.tokens, Token{
-		T:       t,
-		Lexeme:  lexeme,
-		Literal: lexeme,
-		// TODO: implement positioning
-		Line:   0,
-		Column: 0,
-	})
-}
-
-// Checks whether the sequence is found next, if it is, advance headIdx e.g.
-//
-// >> src := "()===!";
-// >> headIdx := 2;
-// >> head := '=';
-// >> candidates := []rune{'=', '='}
-// >> seekMatchSequence(candidates)
-// true
-// >> fmt.Println(headIdx)
-// 4
-func (s *Scanner) seekMatchSequence(sequence []rune) bool {
-	if len(sequence) == 0 {
-		panic("sequence must not be empty")
+		candidate = s.src[s.srcCursor:s.srcCursorHead]
 	}
 
-	i, j := s.idxHead+1, 0
-	for j < len(sequence) {
-		if i > len(s.src)-1 || j > len(sequence)-1 {
-			// out of bounds
-			return false
+	if typ, ok := ReservedKeywords[candidate]; ok {
+		return Token{
+			Lexeme: candidate,
+			Type:   typ,
 		}
-		cursorGot := rune(s.src[i])
-		cursorExpected := rune(sequence[j])
-
-		if cursorGot != cursorExpected {
-			return false
-		}
-		i++
-		j++
 	}
 
-	return true
+	return Token{
+		Type:    typ,
+		Literal: candidate,
+		Lexeme:  candidate,
+	}
 }
 
-func isWhitespace(r rune) bool {
-	return r == ' ' || r == '\t' || r == '\r'
+func isWhitespace(r rune) bool { return r == ' ' || r == '\t' || r == '\r' }
+func isNewline(r rune) bool    { return r == '\n' }
+func isStr(r rune) bool        { return r == '\'' || r == '"' }
+func isNumeric(r rune) bool    { return r == '.' || isDec(r) }
+
+var TokenUnknown Token = Token{Type: TUnknown, Lexeme: "", Literal: ""}
+
+// Scan only the next token
+func (s *Lexer) Scan() Token {
+	var token Token
+
+	ch := s.Peek()
+	switch {
+	case isId(ch):
+		token = s.scanIdentifier()
+	case isStr(ch):
+		token = s.scanStringLiteral()
+	case isNumeric(ch):
+		token = s.scanNumericLiteral()
+	case isPunctuation(ch):
+		token = s.scanPunctuation()
+	case isWhitespace(ch):
+		token = Token{Type: TWhitespace, Lexeme: " ", Literal: " "}
+	default:
+		token = TokenUnknown
+	}
+	return token
 }
 
-func isNewline(r rune) bool {
-	return r == '\n'
-}
-
-func (s *Scanner) Scan() ([]Token, error) {
+// Scan up until src's EOF
+func (s *Lexer) ScanAll() ([]Token, []error) {
 	s.logger.Debug("SRC:\n%s\n\n", s.src)
 	defer func() {
 		stack := recover()
 		if stack != nil {
-			s.prettyPrintScan()
-			s.logger.EmitStdout()
+			s.PrettyPrintSrc()
+			s.logger.DumpLogs()
 			panic(stack)
 		}
 	}()
 
-	for s.idxHead < len(s.src) {
-		s.logger.Debug("[%d] mainloop: %c", s.idxHead, s.peek())
-		s.prettyPrintScan()
-		s.idxHeadStart = s.idxHead
-		head := s.peek()
+mainloop:
+	for s.srcCursorHead <= s.srcEnd {
+		if s.srcCursorHead == s.srcCursor {
+			panic("infinite loop found, aborting")
+		}
+		s.srcCursor = s.srcCursorHead
 
-		// check whether we're in an endless loop
-		if s.idxHead > 0 && s.idxHeadLast == s.idxHead {
-			s.logger.Debug("infinite loop found, aborting...\n\n")
-			return s.tokens, errInfiniteLoop
-		} else {
-			s.idxHeadLast = s.idxHead
+		tok := s.Scan()
+		switch tok.Type {
+		case TUnknown:
+			break mainloop
+		case TWhitespace:
+			s.Next()
+		default:
+			s.tokens = append(s.tokens, tok)
 		}
 
-		// identifiers
-		if isIdentifierStart(head) {
-			accept, errs := s.scanIdentifiers()
-			if len(errs) > 0 {
-				return []Token{}, errs[0]
-			}
-			if accept {
-				continue
-			}
-		}
-
-		// string literals
-		if s.peek() == '"' || s.peek() == '\'' {
-			accept, errs := s.scanStringLiteral()
-			if len(errs) > 0 {
-				return []Token{}, errs[0]
-			}
-			if accept {
-				continue
-			}
-		}
-
-		// template literals
-		if s.peek() == '`' {
-			continue
-			// TBI
-			// s.scanTemplateLiteral()
-		}
-
-		// numeric literals
-		if isDecimalDigit(head) || head == '.' {
-			accept, errs := s.scanDigits()
-			if len(errs) > 0 {
-				return []Token{}, errs[0]
-			}
-			if accept {
-				continue
-			}
-		}
-
-		// punctuators
-		if isPunctuation(rune(head)) {
-			accept, errs := s.scanPunctuators()
-			if len(errs) > 0 {
-				return []Token{}, errs[0]
-			}
-			if accept {
-				continue
-			}
-		}
-
-		// we should only advance the head if we didn't match anything
-		// otherwise, we would've already advanced the head because of the
-		// addTokenSafe call, which expects to be one index ahead of the end of the token
-		//
-		// example 1:
-		// "fooobar boo"
-		//  ^- head: 0
-		//
-		// "fooobar boo"
-		//        ^- head: 6 (at this point, we are still in scanIdentifier, because `r` is a valid one)
-		//
-		// "fooobar boo"
-		//         ^- head: 7 (now, whitespace is not a valid identifier, and we advance the head)
-		//
-		// example 2:
-		// "??&&=>"
-		//  ^- head: 0
-		//
-		// "??&&=>"
-		//    ^- head: 2 (quit scanPunctuators because we found a valid `??` token with length 2)
-		//               (we are now at the `&` character and we can't advance the head otherwise we'd skip it)
-		if isWhitespace(head) {
-			s.advanceBy(1)
+		if s.srcCursorOOB {
+			// we advanced past the end of the source
+			break
 		}
 	}
 
-	tokens := strings.Builder{}
-	for _, t := range s.tokens {
-		var lit string
-		if t.Literal != nil {
-			lit = fmt.Sprintf("%s", t.Literal)
-		} else {
-			lit = fmt.Sprintf("%s", t.Lexeme)
-		}
-		tokens.Write([]byte(lit))
-	}
-	s.logger.Debug("\nTOKENS:\n%s\n", tokens.String())
-
-	return s.tokens, nil
+	s.logger.Debug("\nTOKENS:\n%s\n", s.Tokens())
+	return s.tokens, s.errors
 }
 
-// Template literals
-//
-// https://262.ecma-international.org/#prod-TemplateLiteral
-func (s *Scanner) scanTemplateLiteral() {
+// Printing utilities: all tokens
+func (s *Lexer) Tokens() string {
+	var sb strings.Builder
+	sb.WriteByte('(')
+	for i, token := range s.tokens {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.Write([]byte(token.Lexeme))
+	}
+	sb.WriteByte(')')
+	return sb.String()
+}
 
+// Printing utilities: where the cursor is
+func (s *Lexer) PrettyPrintSrc() {
+	s.logger.Debug("%v", s.src)
+	cursor := []byte{}
+	for i := 0; i < s.srcCursorHead; i++ {
+		cursor = append(cursor, ' ')
+	}
+	cursor = append(cursor, '^')
+	s.logger.Debug("%s", cursor)
+}
+
+// Errorf is a convenience function to log errors
+func (s *Lexer) Errorf(format string, values ...any) {
+	formatted := fmt.Sprintf(format, values...)
+	serr := fmt.Sprintf("%s COL:%d CH:%c", formatted, s.srcCursorHead, s.Peek())
+
+	s.errors = append(s.errors, errors.New(serr))
+	s.PrettyPrintSrc()
+	s.logger.Error(serr + "\n")
 }
