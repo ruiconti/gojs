@@ -17,6 +17,7 @@ const (
 
 type Node interface {
 	S() string
+	Type() ExprType
 }
 
 type Parser struct {
@@ -63,7 +64,7 @@ func (p *Parser) log(cursor *int, msg string, format ...interface{}) {
 		p.logger.Debug("[%d:%d] (EOF) %s", p.cursor, *cursor, fmsg)
 	} else {
 		current := p.peek()
-		tname := lex.ResolveName(current.T)
+		tname := current.Type.S()
 		p.logger.Debug("[%d:%d] [%v:%v] %s", p.cursor, *cursor, tname, current.Lexeme, fmsg)
 	}
 }
@@ -76,7 +77,7 @@ func (p *Parser) matchAny(types ...lex.TokenType) bool {
 	for _, t := range types {
 		if p.peek().Type == t {
 
-			p.logger.Debug("[%d] matched %s, stepping 1..", p.cursor, lex.ResolveName(t))
+			p.logger.Debug("[%d] matched %s, stepping 1..", p.cursor, t.S())
 			p.advanceBy(1)
 			return true
 		}
@@ -95,8 +96,10 @@ func NewParser(seq []lex.Token, logger *internal.SimpleLogger) *Parser {
 func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
 	lexer := lex.NewLexer(src, logger)
 	tokens, err := lexer.ScanAll()
-	if err != nil {
-		logger.Error("Error scanning source: %s", err.Error())
+	if len(err) > 0 {
+		for _, e := range err {
+			logger.Error(e.Error())
+		}
 		panic(1)
 	}
 	parser := NewParser(tokens, logger)
@@ -150,11 +153,11 @@ func (p *Parser) parseTokens() *ExprRootNode {
 			p.logger.Debug("c:%d (%d)", c, &c)
 			node, err := p.parseArray(&c)
 			p.logger.Debug("c:%d (%d)", c, &c)
-			p.logger.Debug("[%d:%d] parser:root:endArray: %s", p.cursor, c, node.PrettyPrint())
+			p.logger.Debug("[%d:%d] parser:root:endArray: %s", p.cursor, c, node.S())
 			if err == nil {
 				rootNode.children = append(rootNode.children, node)
 				p.cursor += c // accept the cursor
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, c, node.PrettyPrint())
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, c, node.S())
 				continue
 			} else {
 				p.logger.Debug("[%d:%d] parser:array ERR: %s", p.cursor, c, err)
@@ -164,7 +167,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		node, err := p.parseExpr(&cursor)
 		if err == nil {
 			rootNode.children = append(rootNode.children, node)
-			p.logger.Debug("[%d:%d] parser:root ACC: %s", p.cursor, cursor, node.PrettyPrint())
+			p.logger.Debug("[%d:%d] parser:root ACC: %s", p.cursor, cursor, node.S())
 		} else {
 			p.logger.Debug("[%d:%d] parser:root ERR: %s", p.cursor, cursor, err)
 		}
@@ -176,7 +179,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 			if err == nil {
 				rootNode.children = append(rootNode.children, node)
 				p.cursor += cursor // accept the cursor
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.S())
 				continue
 			}
 		}
@@ -186,7 +189,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		// 	node, err := p.parseUnaryOperator(&cursor)
 		// 	if err == nil {
 		// 		rootNode.children = append(rootNode.children, node)
-		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.S())
 		// 		p.cursor += cursor // accept the cursor
 		// 		continue
 		// 	}
@@ -196,7 +199,7 @@ func (p *Parser) parseTokens() *ExprRootNode {
 		// 	node, err := p.parseUpdateExpr(&cursor)
 		// 	if err == nil {
 		// 		rootNode.children = append(rootNode.children, node)
-		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.PrettyPrint())
+		// 		p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, node.S())
 		// 		p.cursor += cursor // accept the cursor
 		// 		continue
 		// 	}

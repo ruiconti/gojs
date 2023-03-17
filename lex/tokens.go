@@ -13,6 +13,8 @@ type Token struct {
 // Tokens
 type TokenType int
 
+const UnknownLiteral = "UnknownLiteral"
+
 func (typ *TokenType) S() string {
 	dicts := []map[TokenType]string{
 		LiteralNames,
@@ -25,7 +27,7 @@ func (typ *TokenType) S() string {
 		}
 	}
 
-	return "Unknown"
+	return UnknownLiteral
 }
 
 const (

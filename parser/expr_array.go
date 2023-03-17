@@ -13,35 +13,15 @@ type ExprArray struct {
 	elements []Node
 }
 
-func (e *ExprArray) Source() string {
-	srcs := []string{}
-	for _, element := range e.elements {
-		srcs = append(srcs, element.Source())
-	}
-	src := strings.Builder{}
-	src.WriteByte('[')
-	for i, s := range srcs {
-		for _, c := range s {
-			src.Write([]byte{byte(c)})
-		}
-		if i < len(srcs)-1 {
-			src.Write([]byte{byte(' ')})
-			src.Write([]byte{byte(',')})
-		}
-	}
-	src.WriteByte(']')
-	return src.String()
-}
-
 func (e *ExprArray) Type() ExprType {
 	return EArrayLiteral
 }
 
-func (e *ExprArray) PrettyPrint() string {
+func (e *ExprArray) S() string {
 	src := strings.Builder{}
 	src.Write([]byte("(cons "))
 	for i, element := range e.elements {
-		src.Write([]byte(element.PrettyPrint()))
+		src.Write([]byte(element.S()))
 		if i < len(e.elements)-1 {
 			src.Write([]byte(" "))
 		}
@@ -63,7 +43,7 @@ func (p *Parser) parseArray(cursor *int) (Node, error) {
 loop:
 	for {
 		token, err := p.peekN(*cursor)
-		p.logger.Debug("[%d:%d] parser:parseArray %v (err:%v)", p.cursor, *cursor, lex.ResolveName(token.T), err)
+		p.logger.Debug("[%d:%d] parser:parseArray %v (err:%v)", p.cursor, *cursor, token.Type.S(), err)
 		if err != nil {
 			return nil, err
 		}
@@ -81,7 +61,7 @@ loop:
 			if nextToken, err := p.peekN(*cursor + 1); err == nil {
 				if nextToken.Type == lex.TRightBracket || nextToken.Type == lex.TComma {
 					*cursor = *cursor + 1
-					arrExpr.elements = append(arrExpr.elements, &ExprNullLiteral{})
+					arrExpr.elements = append(arrExpr.elements, &ExprLiteral[string]{value: "null", typ: lex.TNull})
 					continue
 				}
 			} else {

@@ -8,6 +8,85 @@ import (
 	"github.com/ruiconti/gojs/lex"
 )
 
+// /////////////////////
+// PrimaryExpression //
+// /////////////////////
+func TestPrimaryLiterals(t *testing.T) {
+	t.Run("literals basic", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := "123 true false null undefined \"foo\" 'bar'"
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprLiteral[float64]{
+					value: 123,
+					typ:   lex.TNumericLiteral,
+				},
+				ExprLitTrue,
+				ExprLitFalse,
+				ExprLitNull,
+				ExprLitUndefined,
+				&ExprLiteral[string]{
+					value: `"foo"`,
+					typ:   lex.TStringLiteral_DoubleQuote,
+				},
+				&ExprLiteral[string]{
+					value: "'bar'",
+					typ:   lex.TStringLiteral_SingleQuote,
+				},
+			},
+		}
+
+		AssertExprEqual(t, logger, got, exp)
+	})
+	t.Run("literals unicode", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `\u3034baz; \u9023\u4930\u1102x; b\u400e\u99a0`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprIdentifierReference{
+					reference: `\u3034baz`,
+				},
+				&ExprIdentifierReference{
+					reference: `\u9023\u4930\u1102x`,
+				},
+				&ExprIdentifierReference{
+					reference: `b\u400e\u99a0`,
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+}
+
+//////////////////////////
+// IdentifierExpression //
+//////////////////////////
+
+func TestExprIdentifierReference(t *testing.T) {
+	logger := internal.NewSimpleLogger(internal.ModeDebug)
+	src := "foo; bar; baz"
+
+	got := Parse(logger, src)
+	exp := &ExprRootNode{
+		children: []Node{
+			&ExprIdentifierReference{
+				reference: "foo",
+			},
+			&ExprIdentifierReference{
+				reference: "bar",
+			},
+			&ExprIdentifierReference{
+				reference: "baz",
+			},
+		},
+	}
+
+	AssertExprEqual(t, logger, got, exp)
+}
+
 func binExpr(left, right Node, op lex.TokenType) *ExprBinaryOp {
 	return &ExprBinaryOp{
 		left:     left,
@@ -22,6 +101,11 @@ func idExpr(name string) *ExprIdentifierReference {
 	}
 }
 
+// //////////////
+// Operations //
+// /////////////
+
+// Binary operators
 func TestBinaryOperators(t *testing.T) {
 	t.Run("properly parses simple, same-precedence, binary expr", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
@@ -48,7 +132,7 @@ func TestBinaryOperators(t *testing.T) {
 		}
 
 		for _, binOperator := range binOperators {
-			lexeme := lex.ResolveName(binOperator)
+			lexeme := binOperator.S()
 			src := fmt.Sprintf(`a %s b %s c %s d %s e %s f`, lexeme, lexeme, lexeme, lexeme, lexeme)
 			binExpr := func(left, right Node) *ExprBinaryOp {
 				return binExpr(left, right, binOperator)
@@ -187,7 +271,47 @@ func TestBinaryOperators(t *testing.T) {
 			opsMult, /* lower */
 		)
 	})
+}
 
+// Unary operators
+func TestUnaryOperators(t *testing.T) {
+	t.Run("unary operator with single reference binding", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UnaryOperators {
+			src := fmt.Sprintf("%s foo", operator.S())
+			got := Parse(logger, src)
+			exp := &ExprRootNode{
+				children: []Node{
+					&ExprUnaryOp{
+						operand: &ExprIdentifierReference{
+							reference: "foo",
+						},
+						operator: operator,
+					},
+				},
+			}
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
+
+	t.Run("update expr with single reference binding", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, operator := range UpdateOperators {
+			src := fmt.Sprintf("%s foo", operator.S())
+			exp := &ExprRootNode{
+				children: []Node{
+					&ExprUnaryOp{
+						operand: &ExprIdentifierReference{
+							reference: "foo",
+						},
+						operator: operator,
+					},
+				},
+			}
+			got := Parse(logger, src)
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
 	// TODO: this should err because the grammar doesn't support this operation
 	// TODO: without parentheses
 	// t.Run("unary operation has precedence over exponential operation", func(t *testing.T) {
@@ -242,7 +366,7 @@ func TestBinaryOperators(t *testing.T) {
 	t.Run("unary expr called recursively", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		for _, operator := range UnaryOperators {
-			operatorName := lex.ResolveName(operator)
+			operatorName := operator.S()
 			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
 			got := Parse(logger, src)
 			exp := &ExprRootNode{
@@ -272,7 +396,7 @@ func TestBinaryOperators(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		for _, unaryOp := range UnaryOperators {
 			for _, updateOp := range UpdateOperators {
-				src := fmt.Sprintf("%s %s foo", lex.ResolveName(unaryOp), lex.ResolveName(updateOp))
+				src := fmt.Sprintf("%s %s foo", unaryOp.S(), updateOp.S())
 				got := Parse(logger, src)
 				exp := &ExprRootNode{
 					children: []Node{
@@ -318,8 +442,13 @@ func TestBinaryOperators(t *testing.T) {
 
 		AssertExprEqual(t, logger, got, exp)
 	})
+
 }
 
+// //////////
+// Helpers //
+// //////////
+//
 // assertBinaryExprPrecedence asserts that the given operators have the correct precedence.
 func assertBinaryExprPrecedence(
 	t *testing.T,
@@ -329,12 +458,12 @@ func assertBinaryExprPrecedence(
 	logger := internal.NewSimpleLogger(internal.ModeDebug)
 
 	for _, opHigher := range opsHigherPrecedence {
-		lexemeHigherPrecedence := lex.ResolveName(opHigher)
+		lexemeHigherPrecedence := opHigher.S()
 		binHigherExpr := func(left, right Node) *ExprBinaryOp {
 			return binExpr(left, right, opHigher)
 		}
 		for _, opLower := range opsLowerPrecedence {
-			lexemeLowerPrecedence := lex.ResolveName(opLower)
+			lexemeLowerPrecedence := opLower.S()
 			binLowerExpr := func(left, right Node) *ExprBinaryOp {
 				return binExpr(left, right, opLower)
 			}

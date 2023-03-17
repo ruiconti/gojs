@@ -8,7 +8,7 @@ import (
 )
 
 func PrettyPrintExpr(t *testing.T, expr Node) {
-	fmt.Printf("%s", expr.PrettyPrint())
+	fmt.Printf("%s", expr.S())
 }
 
 func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected Node) {
@@ -20,8 +20,8 @@ func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected 
 		errs = append(errs, fmt.Sprintf("Expected %s, got %s", expected.Type(), got.Type()))
 	}
 
-	sgot := got.PrettyPrint()
-	sexp := expected.PrettyPrint()
+	sgot := got.S()
+	sexp := expected.S()
 	if sexp != sgot {
 		failure = true
 		errs = append(errs, fmt.Sprintf("PrettyPrint differs"))

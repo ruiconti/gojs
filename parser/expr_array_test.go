@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/ruiconti/gojs/internal"
+	"github.com/ruiconti/gojs/lex"
 )
 
 func TestParseArray_Simple(t *testing.T) {
@@ -14,12 +15,12 @@ func TestParseArray_Simple(t *testing.T) {
 			children: []Node{
 				&ExprArray{
 					elements: []Node{
-						&ExprNullLiteral{},
-						&ExprNullLiteral{},
-						&ExprNullLiteral{},
-						&ExprNullLiteral{},
-						&ExprNullLiteral{},
-						&ExprNullLiteral{},
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
 					},
 				},
 			},
@@ -34,27 +35,29 @@ func TestParseArray_Simple(t *testing.T) {
 			children: []Node{
 				&ExprArray{
 					elements: []Node{
-						&ExprNumeric{
+						&ExprLiteral[float64]{
 							value: 1,
+							typ:   lex.TNumericLiteral,
 						},
-						&ExprNumeric{
+						&ExprLiteral[float64]{
 							value: 2,
+							typ:   lex.TNumericLiteral,
 						},
-						&ExprBoolean{
-							value: true,
-						},
+						ExprLitTrue,
 						&ExprIdentifierReference{
 							reference: `\u3340xa`,
 						},
-						&ExprUndefinedLiteral{},
-						&ExprNullLiteral{},
-						&ExprStringLiteral{
-							value: "foo",
+						ExprLitUndefined,
+						ExprLitNull,
+						&ExprLiteral[string]{
+							value: "'foo'",
+							typ:   lex.TStringLiteral_SingleQuote,
 						},
-						&ExprStringLiteral{
-							value: "bar",
+						&ExprLiteral[string]{
+							value: `"bar"`,
+							typ:   lex.TStringLiteral_DoubleQuote,
 						},
-						&ExprNullLiteral{},
+						ExprLitNull,
 					},
 				},
 			},
