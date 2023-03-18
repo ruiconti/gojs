@@ -1,5 +1,7 @@
 package lex
 
+import "fmt"
+
 type Token struct {
 	Type    TokenType
 	Lexeme  string
@@ -8,12 +10,24 @@ type Token struct {
 	Column  int
 }
 
+func (t *Token) String() string {
+	return fmt.Sprintf("Token{Lexeme:%v Type:%v Literal:%v}", t.Lexeme, t.Type.S(), t.Literal)
+}
+
 // Map all tokens from the specification
 // https://262.ecma-international.org/#sec-tokens
 // Tokens
 type TokenType int
 
 const UnknownLiteral = "UnknownLiteral"
+
+func (typ *TokenType) Token() Token {
+	return Token{
+		Type:    *typ,
+		Literal: typ.S(),
+		Lexeme:  typ.S(),
+	}
+}
 
 func (typ *TokenType) S() string {
 	dicts := []map[TokenType]string{
@@ -39,6 +53,8 @@ const (
 	TStringLiteral_DoubleQuote
 	TRegularExpressionLiteral
 	TTemplateLiteral
+	TEOF
+	TBOF
 	TUnknown
 
 	// Other

@@ -31,37 +31,37 @@ func (e *ExprArray) S() string {
 }
 
 func (p *Parser) parseArray(cursor *int) (Node, error) {
-	if p.peek().Type != lex.TLeftBracket {
+	if p.Peek().Type != lex.TLeftBracket {
 		return nil, errors.New("Expected '['")
 	}
 
 	// var token lex.Token
 	arrExpr := &ExprArray{}
 	*cursor = *cursor + 1
-	p.logger.Debug("[%d:%d] parser:parseArray [", p.cursor, *cursor)
+	// p.logger.Debug("[%d:%d] parser:parseArray [", p.cursor, *cursor)
 
 loop:
 	for {
-		token, err := p.peekN(*cursor)
-		p.logger.Debug("[%d:%d] parser:parseArray %v (err:%v)", p.cursor, *cursor, token.Type.S(), err)
-		if err != nil {
-			return nil, err
+		token := p.Peek()
+		// p.logger.Debug("[%d:%d] parser:parseArray %v (err:%v)", p.cursor, *cursor, token.Type.S(), err)
+		if token.Type == lex.TEOF {
+			break loop
 		}
 
 		switch token.Type {
 		case lex.TRightBracket:
 			// end of array
 			*cursor = *cursor + 1
-			p.logger.Debug("[%d:%d] parser:parseArray:right brace", p.cursor, *cursor)
+			// p.logger.Debug("[%d:%d] parser:parseArray:right brace", p.cursor, *cursor)
 			break loop
 		case lex.TComma:
 			// two conditions need to be satisfied so we can add a null element
 			// 1. the next token is a right bracket
 			// 2. the next token is a comma
-			if nextToken, err := p.peekN(*cursor + 1); err == nil {
+			if nextToken := p.PeekN(1); nextToken.Type != lex.TEOF {
 				if nextToken.Type == lex.TRightBracket || nextToken.Type == lex.TComma {
 					*cursor = *cursor + 1
-					arrExpr.elements = append(arrExpr.elements, &ExprLiteral[string]{value: "null", typ: lex.TNull})
+					arrExpr.elements = append(arrExpr.elements, ExprLitNull)
 					continue
 				}
 			} else {
@@ -69,16 +69,16 @@ loop:
 			}
 		default:
 			tmpc := *cursor
-			primaryExpr, err := p.parsePrimaryExpr(&tmpc)
+			primaryExpr, err := p.parsePrimaryExpr()
 			if err == nil {
 				*cursor = tmpc
 				arrExpr.elements = append(arrExpr.elements, primaryExpr)
 				continue
 			}
 		}
-		*cursor = *cursor + 1
+		p.Next()
 	}
 
-	p.logger.Debug("[%d:%d] parser:parseArray:acc", p.cursor, *cursor)
+	// p.logger.Debug("[%d:%d] parser:parseArray:acc", p.cursor, *cursor)
 	return arrExpr, nil
 }

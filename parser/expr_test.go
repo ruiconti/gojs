@@ -18,21 +18,16 @@ func TestPrimaryLiterals(t *testing.T) {
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{
-				&ExprLiteral[float64]{
-					value: 123,
-					typ:   lex.TNumericLiteral,
-				},
+				&ExprLiteral[float64]{lex.Token{Type: lex.TNumericLiteral, Literal: "123"}},
 				ExprLitTrue,
 				ExprLitFalse,
 				ExprLitNull,
 				ExprLitUndefined,
 				&ExprLiteral[string]{
-					value: `"foo"`,
-					typ:   lex.TStringLiteral_DoubleQuote,
+					lex.Token{Type: lex.TStringLiteral_DoubleQuote, Literal: `"foo"`},
 				},
 				&ExprLiteral[string]{
-					value: "'bar'",
-					typ:   lex.TStringLiteral_SingleQuote,
+					lex.Token{Type: lex.TStringLiteral_SingleQuote, Literal: `'bar'`},
 				},
 			},
 		}
@@ -91,7 +86,7 @@ func binExpr(left, right Node, op lex.TokenType) *ExprBinaryOp {
 	return &ExprBinaryOp{
 		left:     left,
 		right:    right,
-		operator: op,
+		operator: op.Token(),
 	}
 }
 
@@ -286,7 +281,10 @@ func TestUnaryOperators(t *testing.T) {
 						operand: &ExprIdentifierReference{
 							reference: "foo",
 						},
-						operator: operator,
+						operator: lex.Token{
+							Type:    operator,
+							Literal: operator.S(),
+						},
 					},
 				},
 			}
@@ -304,7 +302,7 @@ func TestUnaryOperators(t *testing.T) {
 						operand: &ExprIdentifierReference{
 							reference: "foo",
 						},
-						operator: operator,
+						operator: operator.Token(),
 					},
 				},
 			}
@@ -367,6 +365,7 @@ func TestUnaryOperators(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		for _, operator := range UnaryOperators {
 			operatorName := operator.S()
+			operatorToken := operator.Token()
 			src := fmt.Sprintf("%s %s %s %s bar", operatorName, operatorName, operatorName, operatorName)
 			got := Parse(logger, src)
 			exp := &ExprRootNode{
@@ -378,13 +377,13 @@ func TestUnaryOperators(t *testing.T) {
 									operand: &ExprIdentifierReference{
 										reference: "bar",
 									},
-									operator: operator,
+									operator: operatorToken,
 								},
-								operator: operator,
+								operator: operatorToken,
 							},
-							operator: operator,
+							operator: operatorToken,
 						},
-						operator: operator,
+						operator: operatorToken,
 					},
 				},
 			}
@@ -401,9 +400,9 @@ func TestUnaryOperators(t *testing.T) {
 				exp := &ExprRootNode{
 					children: []Node{
 						&ExprUnaryOp{
-							operator: unaryOp,
+							operator: unaryOp.Token(),
 							operand: &ExprUnaryOp{
-								operator: updateOp,
+								operator: updateOp.Token(),
 								operand:  idExpr("foo"),
 							},
 						},
@@ -416,9 +415,33 @@ func TestUnaryOperators(t *testing.T) {
 
 	})
 
+	t.Run("member expressions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo.bar[baz][foo2].bar2`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					object: &ExprMemberAccess{
+						object: &ExprMemberAccess{
+							object: &ExprMemberAccess{
+								object:   idExpr("foo"),
+								property: idExpr("bar"),
+							},
+							property: idExpr("baz"),
+						},
+						property: idExpr("foo2"),
+					},
+					property: idExpr("bar2"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
 	t.Run("new expression called with member expression", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
-		src := fmt.Sprintf("new foo.bar[baz][foo2].bar2")
+		src := `new foo.bar[baz][foo2].bar2`
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{

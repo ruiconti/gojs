@@ -1,0 +1,5 @@
+go 1.19
+
+use github.com/ruiconti/gojs/parser@./parser
+
+use github.com/ruiconti/gojs/lexer@./lex

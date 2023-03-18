@@ -9,7 +9,12 @@ import (
 	gojs "github.com/ruiconti/gojs/internal"
 )
 
-var ReservedKeywords = internal.MapInvert(ReservedWordNames)
+const EOF rune = -1
+
+var (
+	ReservedKeywords       = internal.MapInvert(ReservedWordNames)
+	TokenUnknown     Token = Token{TUnknown, "", "", 0, 0}
+)
 
 // Errors
 var (
@@ -20,8 +25,6 @@ var (
 	errUnterminatedStringLiteral = fmt.Errorf("unterminated string literal")
 	errInvalidEscapedSequence    = errors.New("invalid escaped sequence")
 )
-
-const EOF rune = -1
 
 type Lexer struct {
 	// source string being scanned
@@ -118,15 +121,19 @@ func (s *Lexer) PeekN(offset uint) rune {
 	return rune(s.src[lookAhead])
 }
 
+// CreateLiteralToken abstracts the common task of creating
+// a token for a literal (eg bool, string, number)
 func (s *Lexer) CreateLiteralToken(typ TokenType) Token {
-	// try to parse it as a reserved word
 	var candidate string
 	if s.srcCursorHead == s.srcEnd && s.srcCursorOOB {
+		// if we are at the end of the source, we can't use srcCursorHead for trimming
+		// because that would be out of bounds
 		candidate = s.src[s.srcCursor:]
 	} else {
 		candidate = s.src[s.srcCursor:s.srcCursorHead]
 	}
 
+	// try to parse it as a reserved word
 	if typ, ok := ReservedKeywords[candidate]; ok {
 		return Token{
 			Lexeme: candidate,
@@ -134,6 +141,7 @@ func (s *Lexer) CreateLiteralToken(typ TokenType) Token {
 		}
 	}
 
+	// regular literal
 	return Token{
 		Type:    typ,
 		Literal: candidate,
@@ -145,8 +153,6 @@ func isWhitespace(r rune) bool { return r == ' ' || r == '\t' || r == '\r' }
 func isNewline(r rune) bool    { return r == '\n' }
 func isStr(r rune) bool        { return r == '\'' || r == '"' }
 func isNumeric(r rune) bool    { return r == '.' || isDec(r) }
-
-var TokenUnknown Token = Token{Type: TUnknown, Lexeme: "", Literal: ""}
 
 // Scan only the next token
 func (s *Lexer) Scan() Token {

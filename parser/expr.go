@@ -8,7 +8,12 @@ import (
 	"github.com/ruiconti/gojs/lex"
 )
 
-type Expr interface{}
+type ExprType string
+
+const (
+	ENodeRoot ExprType = "ENodeRoot"
+	EElision  ExprType = "EElision"
+)
 
 // /////////////////////////////
 // RootNode: Artificial node //
@@ -22,23 +27,27 @@ func (e *ExprRootNode) Type() ExprType {
 }
 
 func (e *ExprRootNode) S() string {
-	pp := strings.Builder{}
-	pp.Write([]byte("(root"))
+	var s strings.Builder
+	s.Write([]byte("(root"))
 	for i, child := range e.children {
 		if i == 0 {
 			// first whitespace
-			pp.Write([]byte(" "))
+			s.Write([]byte(" "))
 		}
 
-		pp.Write([]byte(child.S()))
+		if child == nil {
+			panic(fmt.Sprintf("panic: nil child at index %d/%d. children: %+v", i, len(e.children)-1, s.String()))
+		}
+
+		s.Write([]byte(child.S()))
 		if i < len(e.children)-1 {
 			// subsequent whitespace
-			pp.Write([]byte(" "))
+			s.Write([]byte(" "))
 		}
 
 	}
-	pp.Write([]byte(")"))
-	return pp.String()
+	s.Write([]byte(")"))
+	return s.String()
 }
 
 // /////////////////
@@ -75,12 +84,11 @@ type Literal interface {
 }
 
 type ExprLiteral[Value Literal] struct {
-	typ   lex.TokenType
-	value Value
+	tok lex.Token
 }
 
 func (e *ExprLiteral[Value]) Source() string {
-	return fmt.Sprintf("%v", e.value)
+	return fmt.Sprintf("%v", e.tok.Literal)
 }
 
 func (e *ExprLiteral[Value]) Type() ExprType {
@@ -88,15 +96,16 @@ func (e *ExprLiteral[Value]) Type() ExprType {
 }
 
 func (e *ExprLiteral[Value]) S() string {
-	return fmt.Sprintf("%v", e.value)
+	return fmt.Sprintf("%v", e.tok.Literal)
 }
 
 func MakeLiteralExpr(typ lex.TokenType) *ExprLiteral[string] {
-	literal := typ.S()
+	tok := lex.Token{Type: typ, Literal: typ.S()}
+	literal := tok.Type.S()
 	if literal == lex.UnknownLiteral {
 		return nil
 	}
-	return &ExprLiteral[string]{typ, literal}
+	return &ExprLiteral[string]{tok}
 }
 
 var LiteralsTokens = []lex.TokenType{
@@ -135,7 +144,7 @@ var UnaryOperators = []lex.TokenType{
 
 type ExprUnaryOp struct {
 	operand  Node
-	operator lex.TokenType
+	operator lex.Token
 }
 
 func (e *ExprUnaryOp) Name() string {
@@ -147,7 +156,7 @@ func (e *ExprUnaryOp) Type() ExprType {
 }
 
 func (e *ExprUnaryOp) S() string {
-	return fmt.Sprintf("(%s %s)", e.operator.S(), e.operand.S())
+	return fmt.Sprintf("(%s %s)", e.operator.Type.S(), e.operand.S())
 }
 
 // Parser
@@ -165,7 +174,7 @@ const EBinaryOp ExprType = "ExprBinaryOp"
 type ExprBinaryOp struct {
 	left     Node
 	right    Node
-	operator lex.TokenType
+	operator lex.Token
 }
 
 func (e *ExprBinaryOp) Type() ExprType {
@@ -173,7 +182,7 @@ func (e *ExprBinaryOp) Type() ExprType {
 }
 
 func (e *ExprBinaryOp) S() string {
-	return fmt.Sprintf("(%s %s %s)", e.operator.S(), e.left.S(), e.right.S())
+	return fmt.Sprintf("(%s %s %s)", e.operator.Type.S(), e.left.S(), e.right.S())
 }
 
 // //////////
@@ -208,416 +217,472 @@ func (e *ExprMemberAccess) Type() ExprType {
 }
 
 func (e *ExprMemberAccess) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	if e.property == nil {
+		panic("invalid nil access: property")
+	}
+	if e.object == nil {
+		panic("invalid nil access: object")
+	}
 	return fmt.Sprintf("(. %s %s)", e.property.S(), e.object.S())
 }
 
+// //////////////////////////
+// Expressions productions //
+// //////////////////////////
+func (p *Parser) parseExpr() (Node, error) {
+	return p.parseAssignExpr()
+}
+
+func (p *Parser) parseAssignExpr() (Node, error) {
+	return p.parseCondExpr()
+}
+
+func (p *Parser) parseCondExpr() (Node, error) {
+	return p.parseLogOrExpr()
+}
+
+func newSet[C comparable](items ...C) map[C]struct{} {
+	set := make(map[C]struct{}, len(items))
+	for _, item := range items {
+		set[item] = struct{}{}
+	}
+	return set
+}
+
+// parseBinaryOperators parses a binary expression with the following EBNF:
 //
-// Expressions productions
+//	Expr ::= Expr operator RightHigherExpr | LeftHigherExpr
 //
-
-func (p *Parser) parseExpr(c *int) (Node, error) {
-	return p.parseAssignExpr(c)
-}
-
-func (p *Parser) parseAssignExpr(c *int) (Node, error) {
-	return p.parseCondExpr(c)
-}
-
-func (p *Parser) parseCondExpr(c *int) (Node, error) {
-	return p.parseLogOrExpr(c)
-}
-
-func (p *Parser) parseBinaryExprGeneric(
-	cursor *int,
+// which can be transformed, removing left-recursion, to:
+//
+//	Expr ::= LeftHigherExpr (operator RightHigherExpr)*
+//
+// for the more generic case where LeftHigherExpr == RightHigherExpr:
+//
+//	Expr ::= HigherExpr (operator HigherExpr)*
+func (p *Parser) parseBinaryOperators(
 	operators []lex.TokenType,
-	left func(*int) (Node, error),
-	right func(*int) (Node, error),
+	higherExprLeft func() (Node, error),
+	higherExprRight func() (Node, error),
 ) (Node, error) {
-	var opstr strings.Builder
-	for _, op := range operators {
-		opstr.Write([]byte(op.S()))
+	var (
+		left  Node
+		err   error
+		opSet = newSet(operators...)
+	)
+
+	// Expr ::= HigherExpr
+	if left, err = higherExprLeft(); err != nil {
+		return nil, err
 	}
 
-	p.log(cursor, "parseBinExprGeneric2 (%s) ENTER", opstr.String())
-	c := 0
-	// try to parse left side
-	expr, err := left(&c)
-	if err != nil {
-		p.log(cursor, "parseBinExprGeneric2 (%s) left-expr REJ", opstr.String())
-		return &ExprBinaryOp{}, err
-	}
-	p.log(cursor, "parseBinExprGeneric2 (%s) left-expr ACC: %v", opstr.String(), expr.S())
-
-	// advance cursor to parse operator
-	p.advanceBy(c)
-	if p.isEOF() {
-		// we may have reached the right-hand-side of a binary expression
-		return expr, nil
-	}
-
-	for p.matchAny(operators...) {
-		// if it did match, then to parse the operator we need to look back
-		// we know it won't err because we just matched it :)
-		operator, _ := p.peekN(-1)
-
-		str := operator.Type.S()
-		c = 0
-		rightArg, err := right(&c)
-		if err != nil {
-			p.log(cursor, "parseBinExprGeneric2 (loop:%s) right-expr (REJ): %v", str, err)
-			// eof or didn't match
+	// (operator HigherExpr)*
+	lastCursor := p.cursor
+	for {
+		token := p.Peek()
+		p.Log("parseBinaryOperators: %s", token.Type.S())
+		if _, ok := opSet[token.Type]; !ok {
 			break
 		}
-		p.log(cursor, "parseBinExprGeneric2 (loop:%s) right-expr (ACC): %v", str, rightArg.S())
+		p.Next() // Consumes operator
 
-		p.advanceBy(c)
-		p.log(cursor, "parseBinExprGeneric2 (loop:%s) before: %v", str, expr.S())
-		expr = &ExprBinaryOp{
-			operator: operator.Type,
-			left:     expr,
-			right:    rightArg,
+		if right, err := higherExprRight(); err != nil {
+			break
+		} else {
+			left = &ExprBinaryOp{
+				operator: token,
+				left:     left,
+				right:    right,
+			}
 		}
-		p.log(cursor, "parseBinExprGeneric2 (loop:%s) after: %v", str, expr.S())
+		p.guardInfiniteLoop(&lastCursor)
 	}
 
-	p.log(cursor, "parseBinExprGeneric2 returning (ACC): %v", expr.S())
-	return expr, nil
+	return left, nil
 }
 
-func (p *Parser) parseLogOrExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseLogOrExpr() (Node, error) {
+	p.Log("parseLogOrExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TLogicalOr},
 		p.parseAndExpr,
 		p.parseAndExpr,
 	)
 }
 
-func (p *Parser) parseAndExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseAndExpr() (Node, error) {
+	p.Log("parseAndExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TLogicalAnd},
 		p.parseBitOrExpr,
 		p.parseBitOrExpr,
 	)
 }
 
-func (p *Parser) parseBitOrExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseBitOrExpr() (Node, error) {
+	p.Log("parseBitOrExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TOr},
 		p.parseBitXorExpr,
 		p.parseBitXorExpr,
 	)
 }
 
-func (p *Parser) parseBitXorExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseBitXorExpr() (Node, error) {
+	p.Log("parseBitXorExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TXor},
 		p.parseBitAndExpr,
 		p.parseBitAndExpr,
 	)
 }
 
-func (p *Parser) parseBitAndExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseBitAndExpr() (Node, error) {
+	p.Log("parseBitAndExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TAnd},
 		p.parseEqualityExpr,
 		p.parseEqualityExpr,
 	)
 }
 
-func (p *Parser) parseEqualityExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseEqualityExpr() (Node, error) {
+	p.Log("parseEqualityExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual},
 		p.parseRelationalExpr,
 		p.parseRelationalExpr,
 	)
 }
 
-func (p *Parser) parseRelationalExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseRelationalExpr() (Node, error) {
+	p.Log("parseRelationalExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TGreaterThan, lex.TGreaterThanEqual, lex.TLessThan, lex.TLessThanEqual, lex.TInstanceof, lex.TIn},
 		p.parseShiftExpr,
 		p.parseShiftExpr,
 	)
 }
 
-func (p *Parser) parseShiftExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseShiftExpr() (Node, error) {
+	p.Log("parseShiftExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift},
 		p.parseAdditiveExpr,
 		p.parseAdditiveExpr,
 	)
 }
 
-func (p *Parser) parseAdditiveExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseAdditiveExpr() (Node, error) {
+	p.Log("parseAdditiveExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TPlus, lex.TMinus},
 		p.parseMultiplicativeExpr,
 		p.parseMultiplicativeExpr,
 	)
 }
 
-func (p *Parser) parseMultiplicativeExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseMultiplicativeExpr() (Node, error) {
+	p.Log("parseMultiplicativeExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent},
 		p.parseExponentialExpr,
 		p.parseExponentialExpr,
 	)
 }
 
-func (p *Parser) parseExponentialExpr(c *int) (Node, error) {
-	return p.parseBinaryExprGeneric(
-		c,
+func (p *Parser) parseExponentialExpr() (Node, error) {
+	p.Log("parseExponentialExpr")
+	return p.parseBinaryOperators(
 		[]lex.TokenType{lex.TStarStar},
 		p.parseUnaryOperator,
-		p.parseUnaryOperator,
+		p.parseUpdateExpr,
 	)
 }
 
-func (p *Parser) parseUnaryOperator(cursor *int) (Node, error) {
-	// UnaryExpr = UpdateExpr | ("delete" | "void" | "typeof" | "+" | "-" | "~" | "!") UnaryExpr
-	// parse (UpdateExpression)
-	p.log(cursor, "parseUnaryExpr ENTER")
-	p.log(cursor, "parseUnaryExpr left-expr (updateExpr)")
-	updateExpr, err := p.parseUpdateExpr(cursor)
-	if err == nil {
-		p.log(cursor, "parseUnaryExpr left-expr (updateExpr) returning (ACC): %v", updateExpr.S())
-		return updateExpr, nil
+// UnaryExpression ::=
+// | UpdateExpression
+// | UnaryOp UnaryExpression
+// | AwaitExpression (TODO)
+//
+// UnaryOp ::= delete | void | typeof | + | - | ~ | !
+func (p *Parser) parseUnaryOperator() (Node, error) {
+	p.Log("parseUnaryOperator")
+	var (
+		exprUnary, exprUpdate Node
+		err                   error
+		unaryOpSet            = newSet(UnaryOperators...)
+	)
+
+	// UnaryExpression ::= UpdateExpression
+	if exprUpdate, err = p.parseUpdateExpr(); err == nil {
+		return exprUpdate, nil
 	}
 
-	var expr *ExprUnaryOp
-	for p.matchAny(UnaryOperators...) {
-		// parse (UnaryOperator)
-		operator, _ := p.peekN(-1)
-		str := operator.Type.S()
-
-		p.log(cursor, "parseUnaryExpr (loop:%v) evaluating operand...", str)
-		*cursor = 0
-		operand, err := p.parseUnaryOperator(cursor)
-		if err != nil {
-			p.log(cursor, "parseUnaryExpr (loop:%v) operand eval rejected: %v", str, err)
-			return nil, err
-			// break
-		}
-		p.log(cursor, "parseUnaryExpr (loop:%v) operand eval accepted: %v", str, operand)
-
-		// found a valid operand, walk it
-		p.advanceBy(*cursor)
-		expr = &ExprUnaryOp{
-			operator: operator.Type,
-			operand:  operand,
-		}
-		p.log(cursor, "parseUnaryExpr (loop:%v) expr: %v", str, expr.S())
-	}
-
-	if expr == nil {
-		p.log(cursor, "parseUnaryExpr returning (REJ): expr nil")
-		return expr, fmt.Errorf("parseUnaryExpr rejected")
-	}
-
-	p.log(cursor, "parseUnaryExpr returning (ACC): %v", expr.S())
-	return expr, nil
-}
-
-func (p *Parser) parseUpdateExpr(cursor *int) (Node, error) {
-	p.log(cursor, "parseUpdateExpr ENTER")
-	var expr Node
-
-	// parse (LeftHandSideExpression)
-	leftExpr, err := p.parseLeftHandSideExpr(cursor)
-	if err == nil {
-		// TODO: this early bail may not parse valid update expressions
-		return leftExpr, nil
-	}
-
-	for p.matchAny(UpdateOperators...) {
-		// parse (UnaryOperator)
-		operator, _ := p.peekN(-1)
-		str := operator.Type.S()
-
-		p.log(cursor, "parseUpdateExpr (loop:%v) evaluating operand...", str)
-		*cursor = 0
-		operand, err := p.parseUnaryOperator(cursor)
-		if err != nil {
-			p.log(cursor, "parseUpdateExpr (loop:%v) operand eval rejected: %v", str, err)
-			return nil, err
-			// break
-		}
-		p.log(cursor, "parseUpdateExpr (loop:%v) operand eval accepted: %v", str, operand)
-
-		// found a valid operand, walk it
-		p.advanceBy(*cursor)
-		expr = &ExprUnaryOp{
-			operator: operator.Type,
-			operand:  operand,
-		}
-		p.log(cursor, "parseUpdateExpr (loop:%v) expr: %v", str, expr.S())
-	}
-
-	if expr == nil {
-		p.log(cursor, "parseUpdateExpr returning (REJ): expr nil")
-		return nil, fmt.Errorf("parseUpdateExpr rejected")
-	}
-
-	p.log(cursor, "parseUpdateExpr returning (ACC): %v", expr.S())
-	return expr, nil
-}
-
-func (p *Parser) parseLeftHandSideExpr(cursor *int) (Node, error) {
-	// parse (NewExpression)
-	// NewExpression = MemberExpression | "new" NewExpression
-	memberExpr, err := p.parseMemberExpr(cursor)
-	if err == nil {
-		return memberExpr, nil
-	}
-
-	var expr *ExprNew
-	for p.matchAny(lex.TNew) {
-		p.log(cursor, "parseNewExpr (loop) evaluating callee...")
-		*cursor = 0
-		callee, err := p.parseMemberExpr(cursor)
-		if err != nil {
-			p.log(cursor, "parseNewExpr (loop) callee eval rejected: %v", err)
-			return nil, err
-			// break
-		}
-		p.log(cursor, "parseNewExpr (loop) callee eval accepted: %v", callee)
-
-		// found a valid operand, walk it
-		p.advanceBy(*cursor)
-		expr = &ExprNew{
-			callee: callee,
-		}
-		p.log(cursor, "parseNewExpr (loop) expr: %v", expr.S())
-	}
-
-	if expr == nil {
-		p.log(cursor, "parseNewExpr returning (REJ): expr nil")
-		return nil, fmt.Errorf("parseNewExpr rejected")
-	}
-
-	p.log(cursor, "parseNewExpr returning (ACC): %v", expr.S())
-	return expr, nil
-}
-
-func (p *Parser) parseMemberExpr(cursor *int) (Node, error) {
-	p.log(cursor, "parseMemberExpr ENTER")
-	primaryExpr, err := p.parsePrimaryExpr(cursor)
-	if err != nil {
-		p.log(cursor, "parseMemberExpr REJ: %v", err)
-		return nil, err
-		// try to parse SuperCall or SuperProperty
-	}
-
-	exprMember := primaryExpr
-	parsed := false
-	p.advanceBy(1)
-	for p.matchAny(lex.TPeriod, lex.TLeftBracket) {
-		current, err := p.peekN(-1)
-		p.log(cursor, "parseMemberExpr (loop) matched %v", current.Type)
-		if err != nil {
-			p.log(cursor, "parseMemberExpr (loop) leaving early:%v", err)
+	// UnaryExpression ::= UnaryOp UnaryExpression
+	lastCursor := p.cursor
+	for {
+		token := p.Peek()
+		if _, ok := unaryOpSet[token.Type]; !ok {
 			break
-			// todo: error
 		}
 
-		switch current.Type {
+		p.Next() // consume operator
+		exprUnary, err = p.parseUnaryOperator()
+		if err != nil {
+			return nil, err
+		}
+
+		exprUnary = &ExprUnaryOp{
+			operator: token,
+			operand:  exprUnary,
+		}
+		p.guardInfiniteLoop(&lastCursor)
+	}
+
+	return exprUnary, nil
+}
+
+// UpdateExpression ::=
+// | LeftHandSideExpression (++ | --)
+// | (++ | --) UnaryExpression
+func (p *Parser) parseUpdateExpr() (Node, error) {
+	p.Log("parseUpdateExpr")
+	var (
+		exprLeft, exprUnary Node
+		err                 error
+		unaryOpSet          = newSet(UpdateOperators...)
+		match               bool
+	)
+
+	// LeftHandSideExpression (++ | --)*
+	exprLeft, err = p.parseLeftHandSideExpr()
+	if err == nil {
+		// (++ | --)
+		token := p.Peek()
+		if _, ok := unaryOpSet[token.Type]; !ok {
+			return exprLeft, nil
+		} else {
+			return &ExprUnaryOp{ // TODO: make an UpdateExpr
+				operand:  exprLeft,
+				operator: token,
+			}, nil
+		}
+	}
+
+	// (++ | --) UnaryExpression
+	lastCursor := p.cursor
+	for {
+		token := p.Peek()
+		if _, ok := unaryOpSet[token.Type]; !ok {
+			break
+		}
+
+		p.Next() // consume operator
+		operand, err := p.parseUnaryOperator()
+		if err != nil {
+			return nil, err
+		}
+
+		match = true
+		exprUnary = &ExprUnaryOp{
+			operator: token,
+			operand:  operand,
+		}
+		p.guardInfiniteLoop(&lastCursor)
+	}
+
+	if match {
+		return exprUnary, nil
+	} else {
+		return nil, err
+	}
+}
+
+// parseLeftHandSideExpr parses the following grammar:
+//
+// LeftHandSideExpression ::=
+// | NewExpression
+// | CallExpression     (TODO)
+// | OptionalExpression (TODO)
+func (p *Parser) parseLeftHandSideExpr() (Node, error) {
+	p.Log("parseLeftHandSideExpr")
+	var (
+		expr Node
+		err  error
+	)
+	if expr, err = p.parseNewExpr(); err == nil {
+		return expr, nil
+	}
+
+	// reset state
+	// TODO: parseCallExpr
+
+	// reset state
+	// TODO: parseOptionalExpression
+	return nil, fmt.Errorf("parseLeftHandSideExpr rejected")
+}
+
+// parseLeftHandSideExpr parses the following grammar:
+//
+// NewExpression ::= MemberExpression | new NewExpression
+func (p *Parser) parseNewExpr() (Node, error) {
+	p.Log("parseNewExpr")
+	var (
+		expr Node
+		err  error
+	)
+
+	token := p.Peek()
+	if token.Type == lex.TNew {
+		// NewExpression ::= new NewExpression
+		p.Next() // consumes new
+		callee, err := p.parseNewExpr()
+		if err != nil {
+			return nil, err
+		}
+
+		return &ExprNew{
+			callee: callee,
+		}, nil
+	}
+
+	// NewExpression ::= MemberExpression
+	if expr, err = p.parseMemberExpr(); err == nil {
+		return expr, nil
+	}
+	return nil, err
+}
+
+// parseMemberExpr parses the following grammar:
+//
+// MemberExpression ::=
+// | PrimaryExpression
+// | MemberExpression | (. IdentifierName | [ Expression ] | TemplateLiteral | . PrivateIdentifier)
+// | SuperProperty                  (TODO)
+// | MetaProperty  							    (TODO)
+// | new MemberExpression Arguments (TODO)
+//
+// Transforming to remove the left-recursion:
+//
+// MemberExpression ::=
+// | PrimaryExpression
+// | MemberExpression' ([ Expr ] MemberExpression')*
+// | MemberExpression' (. IdentifierName MemberExpression')*
+// | MemberExpression' (TemplateLiteral MemberExpression')* (TODO)
+//
+// MemberExpression' ::=
+// | PrimaryExpression | SuperProperty | MetaProperty | new MemberExpression Arguments
+func (p *Parser) parseMemberExpr() (Node, error) {
+	p.Log("parseMemberExpr")
+	var (
+		exprMember Node
+		err        error
+	)
+
+	// MemberExpression ::= MemberExpression'
+	if exprMember, err = p.parsePrimaryExpr(); err != nil {
+		return nil, err
+	}
+
+	// MemberExpression ::=
+	// | MemberExpression' ([ Expr ] MemberExpression')*
+	// | MemberExpression' (. IdentifierName MemberExpression')*
+	lastCursor := p.cursor
+loop:
+	for {
+		token := p.Peek()
+		switch token.Type {
 		case lex.TPeriod:
-			parsed = true
-			p.log(cursor, "parseMemberExpr (loop) matched dot")
-			if p.matchAny(lex.TIdentifier) {
-				identifier, _ := p.peekN(-1)
+			// MemberExpression ::= (. IdentifierName MemberExpression')*
+			p.Next() // consume period
+			afterPeriod := p.Peek()
+			if afterPeriod.Type == lex.TIdentifier {
+				// match = true
 				exprMember = &ExprMemberAccess{
 					object: exprMember,
 					property: &ExprIdentifierReference{
-						reference: identifier.Lexeme,
+						reference: afterPeriod.Lexeme,
 					},
 				}
-				p.log(cursor, "parseMemberExpr (loop:ACC) %v", exprMember.S())
+				p.Next() // consume identifier
 			} else {
-				p.log(cursor, "parseMemberExpr (loop:REJ) parsed dot but failed to find identifier")
-				break
+				return nil, fmt.Errorf("expected identifier after dot")
 			}
 		case lex.TLeftBracket:
-			parsed = true
-			p.log(cursor, "parseMemberExpr (loop) matched left brace")
-			expr, err := p.parseExpr(cursor)
-			if err == nil {
-				if p.matchAny(lex.TRightBracket) {
+			// MemberExpression ::= ([ Expr ] MemberExpression')*
+			p.Next()                                    // consume left bracket
+			if expr, err := p.parseExpr(); err == nil { // parseExpr consumes the expression's tokens
+				if p.Peek().Type == lex.TRightBracket {
+					// match = true
 					exprMember = &ExprMemberAccess{
 						object:   exprMember,
 						property: expr,
 					}
-					p.log(cursor, "parseMemberExpr (loop:ACC) %v", exprMember.S())
+					p.Next() // consume right bracket
 				}
 			} else {
-				p.log(cursor, "parseMemberExpr (loop) leaving..")
-				break
+				return nil, fmt.Errorf("expected valid expression after left bracket")
 			}
-
+		default:
+			break loop
 		}
+		p.guardInfiniteLoop(&lastCursor)
 	}
 
-	p.log(cursor, "parseMemberExpr ACC: %v", primaryExpr.S())
-	if !parsed {
-		p.advanceBy(-1)
+	switch exprMember.(type) {
+	case *ExprMemberAccess:
+		return exprMember, nil
+		// panic(t.S())
+	default:
+		return exprMember, nil
 	}
-	// it's just a primary expression
-	return exprMember, nil
+	// return exprMember, nil
 }
 
-// -------------
-// ExprPrimary
-// -------------
-func (p *Parser) parsePrimaryExpr(cursor *int) (Node, error) {
-	reject := false
-
-	// current token position
-	// some statement here
-	// ˆ
-	// p.cursor: 0
-	token, err := p.peekN(*cursor)
-	if err != nil {
-		return nil, err
-	}
-
-	p.log(cursor, "primaryExpr ENTER: %v", token)
-	// in primary expressions, we first process the operator
+// PrimaryExpression ::=
+// | this (TODO)
+// | IdentifierReference
+// | Literal
+// | ArrayLiteral (TODO)
+// | ObjectLiteral (TODO)
+// | FunctionExpression (TODO)
+// | ClassExpression (TODO)
+// | GeneratorExpression (TODO)
+// | AsyncFunctionExpression (TODO)
+// | AsyncGeneratorExpression (TODO)
+// | RegularExpressionLiteral (TODO)
+// | TemplateLiteral (TODO)
+// | CoverParenthesizedExpressionAndArrowParameterList (TODO)
+func (p *Parser) parsePrimaryExpr() (Node, error) {
+	p.Log("parsePrimaryExpr")
 	var primaryExpr Node
-	typ := token.Type
-	switch typ {
+	token := p.Peek()
+
+	switch token.Type {
 	case lex.TIdentifier:
 		primaryExpr = &ExprIdentifierReference{
 			reference: token.Lexeme,
 		}
 	case lex.TNumericLiteral:
-		num, err := strconv.ParseFloat(token.Lexeme, 64)
-		if err != nil {
+		if num, err := strconv.ParseFloat(token.Lexeme, 64); err == nil {
+			primaryExpr = &ExprLiteral[float64]{
+				tok: lex.Token{
+					Type:    lex.TNumericLiteral,
+					Literal: num,
+					Lexeme:  token.Lexeme,
+				},
+			}
+		} else {
 			return nil, err
 		}
-		primaryExpr = &ExprLiteral[float64]{
-			value: num,
-			typ:   typ,
-		}
 	case lex.TStringLiteral_SingleQuote:
-		primaryExpr = &ExprLiteral[string]{
-			value: token.Lexeme,
-			typ:   typ,
-		}
+		primaryExpr = &ExprLiteral[string]{token}
 	case lex.TStringLiteral_DoubleQuote:
-		primaryExpr = &ExprLiteral[string]{
-			value: token.Lexeme,
-			typ:   typ,
-		}
+		primaryExpr = &ExprLiteral[string]{token}
 	case lex.TTrue:
 		primaryExpr = ExprLitTrue
 	case lex.TFalse:
@@ -627,16 +692,9 @@ func (p *Parser) parsePrimaryExpr(cursor *int) (Node, error) {
 	case lex.TUndefined:
 		primaryExpr = ExprLitUndefined
 	default:
-		reject = true
-		// not implemented yet
-	}
-
-	if reject {
-		p.log(cursor, "primaryExpr returning (REJ): %v", token)
 		return nil, fmt.Errorf("primaryExpr rejected")
 	}
 
-	*cursor = *cursor + 1
-	p.log(cursor, "primaryExpr returning (ACC): %v", primaryExpr.S())
+	p.Next() // consume token
 	return primaryExpr, nil
 }
