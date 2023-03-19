@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/ruiconti/gojs/internal"
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
 func TestParseArray_Simple(t *testing.T) {
@@ -36,16 +36,16 @@ func TestParseArray_Simple(t *testing.T) {
 			children: []Node{
 				&ExprArray{
 					elements: []Node{
-						&ExprLiteral[float64]{lex.Token{Type: lex.TNumericLiteral, Literal: "1"}},
-						&ExprLiteral[float64]{lex.Token{Type: lex.TNumericLiteral, Literal: "2"}},
+						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "1"}},
+						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "2"}},
 						ExprLitTrue,
 						&ExprIdentifierReference{
 							reference: `\u3340xa`,
 						},
 						ExprLitUndefined,
 						ExprLitNull,
-						&ExprLiteral[string]{lex.Token{Type: lex.TStringLiteral_SingleQuote, Literal: "'foo'"}},
-						&ExprLiteral[string]{lex.Token{Type: lex.TStringLiteral_DoubleQuote, Literal: `"bar"`}},
+						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_SingleQuote, Literal: "'foo'"}},
+						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_DoubleQuote, Literal: `"bar"`}},
 						ExprLitNull,
 					},
 				},

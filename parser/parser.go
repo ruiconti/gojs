@@ -5,11 +5,11 @@ import (
 	"strings"
 
 	"github.com/ruiconti/gojs/internal"
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
-var TokenEOF = lex.Token{lex.TEOF, "EOF", "EOF", 0, 0}
-var TokenBOF = lex.Token{lex.TEOF, "BOF", "BOF", 0, 0}
+var TokenEOF = l.Token{l.TEOF, "EOF", "EOF", 0, 0}
+var TokenBOF = l.Token{l.TEOF, "BOF", "BOF", 0, 0}
 
 type Node interface {
 	S() string
@@ -17,15 +17,15 @@ type Node interface {
 }
 
 type Parser struct {
-	tokens    []lex.Token // token slice
-	cursor    uint32      // current index of the token slice
-	cursorOOB bool        // whether cursor is out of bounds
-	seqEnd    uint32      // last index of the token slice
+	tokens    []l.Token // token slice
+	cursor    uint32    // current index of the token slice
+	cursorOOB bool      // whether cursor is out of bounds
+	seqEnd    uint32    // last index of the token slice
 
 	logger *internal.SimpleLogger
 }
 
-func NewParser(tokens []lex.Token, logger *internal.SimpleLogger) *Parser {
+func NewParser(tokens []l.Token, logger *internal.SimpleLogger) *Parser {
 	return &Parser{
 		tokens:    tokens,
 		cursor:    0,
@@ -35,12 +35,12 @@ func NewParser(tokens []lex.Token, logger *internal.SimpleLogger) *Parser {
 	}
 }
 
-func (p *Parser) Peek() lex.Token {
+func (p *Parser) Peek() l.Token {
 	return p.PeekN(0)
 }
 
 // look-ahead and look-behind
-func (p *Parser) PeekN(n int32) lex.Token {
+func (p *Parser) PeekN(n int32) l.Token {
 	idx := int32(p.cursor) + n
 	if idx > int32(p.seqEnd) {
 		return TokenEOF
@@ -102,7 +102,7 @@ func (p *Parser) guardInfiniteLoop(lastCursor *uint32) {
 }
 
 func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
-	lexer := lex.NewLexer(src, logger)
+	lexer := l.NewLexer(src, logger)
 	tokens, errs := lexer.ScanAll()
 	if len(errs) > 0 {
 		for _, e := range errs {
@@ -142,7 +142,7 @@ func (p *Parser) parseProgram() (*ExprRootNode, error) {
 		token := p.Peek()
 		p.Log("loop %v", token.String())
 
-		if token.Type == lex.TSemicolon {
+		if token.Type == l.TSemicolon {
 			p.Log("skipping ;") // TODO: Ignoring semicolons for now
 			p.Next()
 			continue

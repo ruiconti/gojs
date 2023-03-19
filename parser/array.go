@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
 const EArrayLiteral ExprType = "ENodeNil"
@@ -31,11 +31,11 @@ func (e *ExprArray) S() string {
 }
 
 func (p *Parser) parseArray(cursor *int) (Node, error) {
-	if p.Peek().Type != lex.TLeftBracket {
+	if p.Peek().Type != l.TLeftBracket {
 		return nil, errors.New("Expected '['")
 	}
 
-	// var token lex.Token
+	// var token l.Token
 	arrExpr := &ExprArray{}
 	*cursor = *cursor + 1
 	// p.logger.Debug("[%d:%d] parser:parseArray [", p.cursor, *cursor)
@@ -44,22 +44,22 @@ loop:
 	for {
 		token := p.Peek()
 		// p.logger.Debug("[%d:%d] parser:parseArray %v (err:%v)", p.cursor, *cursor, token.Type.S(), err)
-		if token.Type == lex.TEOF {
+		if token.Type == l.TEOF {
 			break loop
 		}
 
 		switch token.Type {
-		case lex.TRightBracket:
+		case l.TRightBracket:
 			// end of array
 			*cursor = *cursor + 1
 			// p.logger.Debug("[%d:%d] parser:parseArray:right brace", p.cursor, *cursor)
 			break loop
-		case lex.TComma:
+		case l.TComma:
 			// two conditions need to be satisfied so we can add a null element
 			// 1. the next token is a right bracket
 			// 2. the next token is a comma
-			if nextToken := p.PeekN(1); nextToken.Type != lex.TEOF {
-				if nextToken.Type == lex.TRightBracket || nextToken.Type == lex.TComma {
+			if nextToken := p.PeekN(1); nextToken.Type != l.TEOF {
+				if nextToken.Type == l.TRightBracket || nextToken.Type == l.TComma {
 					*cursor = *cursor + 1
 					arrExpr.elements = append(arrExpr.elements, ExprLitNull)
 					continue

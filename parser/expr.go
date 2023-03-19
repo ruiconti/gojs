@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
 type ExprType string
@@ -73,10 +73,10 @@ func (e *ExprIdentifierReference) S() string {
 const ELiteral ExprType = "ExprLiteral"
 
 var (
-	ExprLitNull      = MakeLiteralExpr(lex.TNull)
-	ExprLitUndefined = MakeLiteralExpr(lex.TUndefined)
-	ExprLitTrue      = MakeLiteralExpr(lex.TTrue)
-	ExprLitFalse     = MakeLiteralExpr(lex.TFalse)
+	ExprLitNull      = MakeLiteralExpr(l.TNull)
+	ExprLitUndefined = MakeLiteralExpr(l.TUndefined)
+	ExprLitTrue      = MakeLiteralExpr(l.TTrue)
+	ExprLitFalse     = MakeLiteralExpr(l.TFalse)
 )
 
 type Literal interface {
@@ -84,7 +84,7 @@ type Literal interface {
 }
 
 type ExprLiteral[Value Literal] struct {
-	tok lex.Token
+	tok l.Token
 }
 
 func (e *ExprLiteral[Value]) Source() string {
@@ -99,26 +99,26 @@ func (e *ExprLiteral[Value]) S() string {
 	return fmt.Sprintf("%v", e.tok.Literal)
 }
 
-func MakeLiteralExpr(typ lex.TokenType) *ExprLiteral[string] {
-	tok := lex.Token{Type: typ, Literal: typ.S()}
+func MakeLiteralExpr(typ l.TokenType) *ExprLiteral[string] {
+	tok := l.Token{Type: typ, Literal: typ.S()}
 	literal := tok.Type.S()
-	if literal == lex.UnknownLiteral {
+	if literal == l.UnknownLiteral {
 		return nil
 	}
 	return &ExprLiteral[string]{tok}
 }
 
-var LiteralsTokens = []lex.TokenType{
-	lex.TNumericLiteral,
-	lex.TRegularExpressionLiteral,
-	lex.TStringLiteral_SingleQuote,
-	lex.TStringLiteral_DoubleQuote,
-	lex.TTrue,
-	lex.TFalse,
-	lex.TNull,
+var LiteralsTokens = []l.TokenType{
+	l.TNumericLiteral,
+	l.TRegularExpressionLiteral,
+	l.TStringLiteral_SingleQuote,
+	l.TStringLiteral_DoubleQuote,
+	l.TTrue,
+	l.TFalse,
+	l.TNull,
 }
 
-func isLiteralToken(token lex.Token) bool {
+func isLiteralToken(token l.Token) bool {
 	for _, t := range LiteralsTokens {
 		if token.Type == t {
 			return true
@@ -132,19 +132,19 @@ func isLiteralToken(token lex.Token) bool {
 // //////////////
 const EUnaryOp ExprType = "ExprUnaryOp"
 
-var UnaryOperators = []lex.TokenType{
-	lex.TDelete,
-	lex.TTypeof,
-	lex.TVoid,
-	lex.TPlus,
-	lex.TMinus,
-	lex.TBang,
-	lex.TTilde,
+var UnaryOperators = []l.TokenType{
+	l.TDelete,
+	l.TTypeof,
+	l.TVoid,
+	l.TPlus,
+	l.TMinus,
+	l.TBang,
+	l.TTilde,
 }
 
 type ExprUnaryOp struct {
 	operand  Node
-	operator lex.Token
+	operator l.Token
 }
 
 func (e *ExprUnaryOp) Name() string {
@@ -161,9 +161,9 @@ func (e *ExprUnaryOp) S() string {
 
 // Parser
 
-var UpdateOperators = []lex.TokenType{
-	lex.TMinusMinus,
-	lex.TPlusPlus,
+var UpdateOperators = []l.TokenType{
+	l.TMinusMinus,
+	l.TPlusPlus,
 }
 
 // ///////////////
@@ -174,7 +174,7 @@ const EBinaryOp ExprType = "ExprBinaryOp"
 type ExprBinaryOp struct {
 	left     Node
 	right    Node
-	operator lex.Token
+	operator l.Token
 }
 
 func (e *ExprBinaryOp) Type() ExprType {
@@ -264,7 +264,7 @@ func newSet[C comparable](items ...C) map[C]struct{} {
 //
 //	Expr ::= HigherExpr (operator HigherExpr)*
 func (p *Parser) parseBinaryOperators(
-	operators []lex.TokenType,
+	operators []l.TokenType,
 	higherExprLeft func() (Node, error),
 	higherExprRight func() (Node, error),
 ) (Node, error) {
@@ -307,7 +307,7 @@ func (p *Parser) parseBinaryOperators(
 func (p *Parser) parseLogOrExpr() (Node, error) {
 	p.Log("parseLogOrExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TLogicalOr},
+		[]l.TokenType{l.TLogicalOr},
 		p.parseAndExpr,
 		p.parseAndExpr,
 	)
@@ -316,7 +316,7 @@ func (p *Parser) parseLogOrExpr() (Node, error) {
 func (p *Parser) parseAndExpr() (Node, error) {
 	p.Log("parseAndExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TLogicalAnd},
+		[]l.TokenType{l.TLogicalAnd},
 		p.parseBitOrExpr,
 		p.parseBitOrExpr,
 	)
@@ -325,7 +325,7 @@ func (p *Parser) parseAndExpr() (Node, error) {
 func (p *Parser) parseBitOrExpr() (Node, error) {
 	p.Log("parseBitOrExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TOr},
+		[]l.TokenType{l.TOr},
 		p.parseBitXorExpr,
 		p.parseBitXorExpr,
 	)
@@ -334,7 +334,7 @@ func (p *Parser) parseBitOrExpr() (Node, error) {
 func (p *Parser) parseBitXorExpr() (Node, error) {
 	p.Log("parseBitXorExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TXor},
+		[]l.TokenType{l.TXor},
 		p.parseBitAndExpr,
 		p.parseBitAndExpr,
 	)
@@ -343,7 +343,7 @@ func (p *Parser) parseBitXorExpr() (Node, error) {
 func (p *Parser) parseBitAndExpr() (Node, error) {
 	p.Log("parseBitAndExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TAnd},
+		[]l.TokenType{l.TAnd},
 		p.parseEqualityExpr,
 		p.parseEqualityExpr,
 	)
@@ -352,7 +352,7 @@ func (p *Parser) parseBitAndExpr() (Node, error) {
 func (p *Parser) parseEqualityExpr() (Node, error) {
 	p.Log("parseEqualityExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual},
+		[]l.TokenType{l.TEqual, l.TNotEqual, l.TStrictEqual, l.TStrictNotEqual},
 		p.parseRelationalExpr,
 		p.parseRelationalExpr,
 	)
@@ -361,7 +361,7 @@ func (p *Parser) parseEqualityExpr() (Node, error) {
 func (p *Parser) parseRelationalExpr() (Node, error) {
 	p.Log("parseRelationalExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TGreaterThan, lex.TGreaterThanEqual, lex.TLessThan, lex.TLessThanEqual, lex.TInstanceof, lex.TIn},
+		[]l.TokenType{l.TGreaterThan, l.TGreaterThanEqual, l.TLessThan, l.TLessThanEqual, l.TInstanceof, l.TIn},
 		p.parseShiftExpr,
 		p.parseShiftExpr,
 	)
@@ -370,7 +370,7 @@ func (p *Parser) parseRelationalExpr() (Node, error) {
 func (p *Parser) parseShiftExpr() (Node, error) {
 	p.Log("parseShiftExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift},
+		[]l.TokenType{l.TLeftShift, l.TRightShift, l.TUnsignedRightShift},
 		p.parseAdditiveExpr,
 		p.parseAdditiveExpr,
 	)
@@ -379,7 +379,7 @@ func (p *Parser) parseShiftExpr() (Node, error) {
 func (p *Parser) parseAdditiveExpr() (Node, error) {
 	p.Log("parseAdditiveExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TPlus, lex.TMinus},
+		[]l.TokenType{l.TPlus, l.TMinus},
 		p.parseMultiplicativeExpr,
 		p.parseMultiplicativeExpr,
 	)
@@ -388,7 +388,7 @@ func (p *Parser) parseAdditiveExpr() (Node, error) {
 func (p *Parser) parseMultiplicativeExpr() (Node, error) {
 	p.Log("parseMultiplicativeExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent},
+		[]l.TokenType{l.TStar, l.TSlash, l.TPercent},
 		p.parseExponentialExpr,
 		p.parseExponentialExpr,
 	)
@@ -397,7 +397,7 @@ func (p *Parser) parseMultiplicativeExpr() (Node, error) {
 func (p *Parser) parseExponentialExpr() (Node, error) {
 	p.Log("parseExponentialExpr")
 	return p.parseBinaryOperators(
-		[]lex.TokenType{lex.TStarStar},
+		[]l.TokenType{l.TStarStar},
 		p.parseUnaryOperator,
 		p.parseUpdateExpr,
 	)
@@ -537,7 +537,7 @@ func (p *Parser) parseNewExpr() (Node, error) {
 	)
 
 	token := p.Peek()
-	if token.Type == lex.TNew {
+	if token.Type == l.TNew {
 		// NewExpression ::= new NewExpression
 		p.Next() // consumes new
 		callee, err := p.parseNewExpr()
@@ -596,11 +596,11 @@ loop:
 	for {
 		token := p.Peek()
 		switch token.Type {
-		case lex.TPeriod:
+		case l.TPeriod:
 			// MemberExpression ::= (. IdentifierName MemberExpression')*
 			p.Next() // consume period
 			afterPeriod := p.Peek()
-			if afterPeriod.Type == lex.TIdentifier {
+			if afterPeriod.Type == l.TIdentifier {
 				// match = true
 				exprMember = &ExprMemberAccess{
 					object: exprMember,
@@ -612,11 +612,11 @@ loop:
 			} else {
 				return nil, fmt.Errorf("expected identifier after dot")
 			}
-		case lex.TLeftBracket:
+		case l.TLeftBracket:
 			// MemberExpression ::= ([ Expr ] MemberExpression')*
 			p.Next()                                    // consume left bracket
 			if expr, err := p.parseExpr(); err == nil { // parseExpr consumes the expression's tokens
-				if p.Peek().Type == lex.TRightBracket {
+				if p.Peek().Type == l.TRightBracket {
 					// match = true
 					exprMember = &ExprMemberAccess{
 						object:   exprMember,
@@ -663,15 +663,15 @@ func (p *Parser) parsePrimaryExpr() (Node, error) {
 	token := p.Peek()
 
 	switch token.Type {
-	case lex.TIdentifier:
+	case l.TIdentifier:
 		primaryExpr = &ExprIdentifierReference{
 			reference: token.Lexeme,
 		}
-	case lex.TNumericLiteral:
+	case l.TNumericLiteral:
 		if num, err := strconv.ParseFloat(token.Lexeme, 64); err == nil {
 			primaryExpr = &ExprLiteral[float64]{
-				tok: lex.Token{
-					Type:    lex.TNumericLiteral,
+				tok: l.Token{
+					Type:    l.TNumericLiteral,
 					Literal: num,
 					Lexeme:  token.Lexeme,
 				},
@@ -679,17 +679,17 @@ func (p *Parser) parsePrimaryExpr() (Node, error) {
 		} else {
 			return nil, err
 		}
-	case lex.TStringLiteral_SingleQuote:
+	case l.TStringLiteral_SingleQuote:
 		primaryExpr = &ExprLiteral[string]{token}
-	case lex.TStringLiteral_DoubleQuote:
+	case l.TStringLiteral_DoubleQuote:
 		primaryExpr = &ExprLiteral[string]{token}
-	case lex.TTrue:
+	case l.TTrue:
 		primaryExpr = ExprLitTrue
-	case lex.TFalse:
+	case l.TFalse:
 		primaryExpr = ExprLitFalse
-	case lex.TNull:
+	case l.TNull:
 		primaryExpr = ExprLitNull
-	case lex.TUndefined:
+	case l.TUndefined:
 		primaryExpr = ExprLitUndefined
 	default:
 		return nil, fmt.Errorf("primaryExpr rejected")

@@ -1,5 +1,7 @@
 go 1.19
 
-use github.com/ruiconti/gojs/parser@./parser
+use ./parser
 
-use github.com/ruiconti/gojs/lexer@./lexer
+use ./lexer
+
+use ./internal

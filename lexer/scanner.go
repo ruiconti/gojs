@@ -1,4 +1,4 @@
-package lexerer
+package lexer
 
 import (
 	"errors"

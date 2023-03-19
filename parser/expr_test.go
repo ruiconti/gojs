@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/ruiconti/gojs/internal"
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
 // /////////////////////
@@ -18,16 +18,16 @@ func TestPrimaryLiterals(t *testing.T) {
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{
-				&ExprLiteral[float64]{lex.Token{Type: lex.TNumericLiteral, Literal: "123"}},
+				&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "123"}},
 				ExprLitTrue,
 				ExprLitFalse,
 				ExprLitNull,
 				ExprLitUndefined,
 				&ExprLiteral[string]{
-					lex.Token{Type: lex.TStringLiteral_DoubleQuote, Literal: `"foo"`},
+					l.Token{Type: l.TStringLiteral_DoubleQuote, Literal: `"foo"`},
 				},
 				&ExprLiteral[string]{
-					lex.Token{Type: lex.TStringLiteral_SingleQuote, Literal: `'bar'`},
+					l.Token{Type: l.TStringLiteral_SingleQuote, Literal: `'bar'`},
 				},
 			},
 		}
@@ -82,7 +82,7 @@ func TestExprIdentifierReference(t *testing.T) {
 	AssertExprEqual(t, logger, got, exp)
 }
 
-func binExpr(left, right Node, op lex.TokenType) *ExprBinaryOp {
+func binExpr(left, right Node, op l.TokenType) *ExprBinaryOp {
 	return &ExprBinaryOp{
 		left:     left,
 		right:    right,
@@ -104,26 +104,26 @@ func idExpr(name string) *ExprIdentifierReference {
 func TestBinaryOperators(t *testing.T) {
 	t.Run("properly parses simple, same-precedence, binary expr", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
-		binOperators := []lex.TokenType{lex.TLogicalOr,
-			lex.TLogicalAnd,
-			lex.TOr,
-			lex.TAnd,
-			lex.TXor,
-			lex.TEqual,
-			lex.TStrictEqual,
-			lex.TNotEqual,
-			lex.TStrictNotEqual,
-			lex.TGreaterThan,
-			lex.TGreaterThanEqual,
-			lex.TLessThan,
-			lex.TLessThanEqual,
-			lex.TLeftShift,
-			lex.TRightShift,
-			lex.TPlus,
-			lex.TMinus,
-			lex.TStar,
-			lex.TPercent,
-			lex.TSlash,
+		binOperators := []l.TokenType{l.TLogicalOr,
+			l.TLogicalAnd,
+			l.TOr,
+			l.TAnd,
+			l.TXor,
+			l.TEqual,
+			l.TStrictEqual,
+			l.TNotEqual,
+			l.TStrictNotEqual,
+			l.TGreaterThan,
+			l.TGreaterThanEqual,
+			l.TLessThan,
+			l.TLessThanEqual,
+			l.TLeftShift,
+			l.TRightShift,
+			l.TPlus,
+			l.TMinus,
+			l.TStar,
+			l.TPercent,
+			l.TSlash,
 		}
 
 		for _, binOperator := range binOperators {
@@ -160,8 +160,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("logical AND has precedence over OR expression", func(t *testing.T) {
-		opsLogicalOr := []lex.TokenType{lex.TLogicalOr}
-		opsLogicalAnd := []lex.TokenType{lex.TLogicalAnd}
+		opsLogicalOr := []l.TokenType{l.TLogicalOr}
+		opsLogicalAnd := []l.TokenType{l.TLogicalAnd}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -171,8 +171,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("bitwise OR has precedence over logical AND", func(t *testing.T) {
-		opsOr := []lex.TokenType{lex.TOr}
-		opsLogicalAnd := []lex.TokenType{lex.TLogicalAnd}
+		opsOr := []l.TokenType{l.TOr}
+		opsLogicalAnd := []l.TokenType{l.TLogicalAnd}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -182,8 +182,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("bitwise XOR has precedence over bitwise OR", func(t *testing.T) {
-		opsXor := []lex.TokenType{lex.TXor}
-		opsOr := []lex.TokenType{lex.TOr}
+		opsXor := []l.TokenType{l.TXor}
+		opsOr := []l.TokenType{l.TOr}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -193,8 +193,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("bitwise AND has precedence over bitwise XOR", func(t *testing.T) {
-		opsAnd := []lex.TokenType{lex.TAnd}
-		opsXor := []lex.TokenType{lex.TXor}
+		opsAnd := []l.TokenType{l.TAnd}
+		opsXor := []l.TokenType{l.TXor}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -204,8 +204,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("equality comparison has precedence over bitwise AND", func(t *testing.T) {
-		opsEq := []lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual}
-		opsBitwise := []lex.TokenType{lex.TAnd, lex.TOr, lex.TXor}
+		opsEq := []l.TokenType{l.TEqual, l.TNotEqual, l.TStrictEqual, l.TStrictNotEqual}
+		opsBitwise := []l.TokenType{l.TAnd, l.TOr, l.TXor}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -214,8 +214,8 @@ func TestBinaryOperators(t *testing.T) {
 		)
 	})
 	t.Run("relational comparison has precedence over equality comparison", func(t *testing.T) {
-		opsEq := []lex.TokenType{lex.TEqual, lex.TNotEqual, lex.TStrictEqual, lex.TStrictNotEqual}
-		opsRelational := []lex.TokenType{lex.TLessThan, lex.TLessThanEqual, lex.TGreaterThan, lex.TGreaterThanEqual, lex.TIn, lex.TInstanceof}
+		opsEq := []l.TokenType{l.TEqual, l.TNotEqual, l.TStrictEqual, l.TStrictNotEqual}
+		opsRelational := []l.TokenType{l.TLessThan, l.TLessThanEqual, l.TGreaterThan, l.TGreaterThanEqual, l.TIn, l.TInstanceof}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -224,8 +224,8 @@ func TestBinaryOperators(t *testing.T) {
 		)
 	})
 	t.Run("shift operation has precedence over relational comparison", func(t *testing.T) {
-		opsRelational := []lex.TokenType{lex.TLessThan, lex.TLessThanEqual, lex.TGreaterThan, lex.TGreaterThanEqual, lex.TIn, lex.TInstanceof}
-		opsShift := []lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift}
+		opsRelational := []l.TokenType{l.TLessThan, l.TLessThanEqual, l.TGreaterThan, l.TGreaterThanEqual, l.TIn, l.TInstanceof}
+		opsShift := []l.TokenType{l.TLeftShift, l.TRightShift, l.TUnsignedRightShift}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -235,8 +235,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("additive operation has precedence over shift operation", func(t *testing.T) {
-		opsShift := []lex.TokenType{lex.TLeftShift, lex.TRightShift, lex.TUnsignedRightShift}
-		opsAdd := []lex.TokenType{lex.TPlus, lex.TMinus}
+		opsShift := []l.TokenType{l.TLeftShift, l.TRightShift, l.TUnsignedRightShift}
+		opsAdd := []l.TokenType{l.TPlus, l.TMinus}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -246,8 +246,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("multiplicative operation has precedence over additive operation", func(t *testing.T) {
-		opsMult := []lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent}
-		opsAdd := []lex.TokenType{lex.TPlus, lex.TMinus}
+		opsMult := []l.TokenType{l.TStar, l.TSlash, l.TPercent}
+		opsAdd := []l.TokenType{l.TPlus, l.TMinus}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -257,8 +257,8 @@ func TestBinaryOperators(t *testing.T) {
 	})
 
 	t.Run("exponential operation has precedence over multiplicative operation", func(t *testing.T) {
-		opsMult := []lex.TokenType{lex.TStar, lex.TSlash, lex.TPercent}
-		opsExp := []lex.TokenType{lex.TStarStar}
+		opsMult := []l.TokenType{l.TStar, l.TSlash, l.TPercent}
+		opsExp := []l.TokenType{l.TStarStar}
 
 		assertBinaryExprPrecedence(
 			t,
@@ -281,7 +281,7 @@ func TestUnaryOperators(t *testing.T) {
 						operand: &ExprIdentifierReference{
 							reference: "foo",
 						},
-						operator: lex.Token{
+						operator: l.Token{
 							Type:    operator,
 							Literal: operator.S(),
 						},
@@ -315,7 +315,7 @@ func TestUnaryOperators(t *testing.T) {
 	// t.Run("unary operation has precedence over exponential operation", func(t *testing.T) {
 	// 	multOpExpr := func(left Node, right Node) *ExprBinaryOp {
 	// 		return &ExprBinaryOp{
-	// 			operator: lex.TStarStar,
+	// 			operator: l.TStarStar,
 	// 			left:     left,
 	// 			right:    right,
 	// 		}
@@ -331,7 +331,7 @@ func TestUnaryOperators(t *testing.T) {
 	// 			}
 	// 		}
 
-	// 		lexeme := lex.ResolveName(operator)
+	// 		lexeme := l.ResolveName(operator)
 	// 		src := fmt.Sprintf("%s a ** b ** %s c ** d ** %s e ** f", lexeme, lexeme, lexeme)
 	// 		// equals: delete a ** (b ** (delete c ** (d ** (delete e ** f) ) ) )
 	// 		exp := &ExprRootNode{
@@ -475,8 +475,8 @@ func TestUnaryOperators(t *testing.T) {
 // assertBinaryExprPrecedence asserts that the given operators have the correct precedence.
 func assertBinaryExprPrecedence(
 	t *testing.T,
-	opsHigherPrecedence []lex.TokenType,
-	opsLowerPrecedence []lex.TokenType,
+	opsHigherPrecedence []l.TokenType,
+	opsLowerPrecedence []l.TokenType,
 ) {
 	logger := internal.NewSimpleLogger(internal.ModeDebug)
 
