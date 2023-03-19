@@ -7,11 +7,11 @@ import (
 	"github.com/ruiconti/gojs/internal"
 )
 
-func PrettyPrintExpr(t *testing.T, expr AstNode) {
-	fmt.Printf("%s", expr.PrettyPrint())
+func PrettyPrintExpr(t *testing.T, expr Node) {
+	fmt.Printf("%s", expr.S())
 }
 
-func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected AstNode) {
+func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected Node) {
 	failure := false
 	var errs []string
 	if got.Type() != expected.Type() {
@@ -20,8 +20,8 @@ func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected 
 		errs = append(errs, fmt.Sprintf("Expected %s, got %s", expected.Type(), got.Type()))
 	}
 
-	sgot := got.PrettyPrint()
-	sexp := expected.PrettyPrint()
+	sgot := got.S()
+	sexp := expected.S()
 	if sexp != sgot {
 		failure = true
 		errs = append(errs, fmt.Sprintf("PrettyPrint differs"))
@@ -32,7 +32,7 @@ func AssertExprEqual(t *testing.T, logger *internal.SimpleLogger, got, expected 
 	}
 
 	if failure {
-		logger.EmitStdout()
+		logger.DumpLogs()
 		for _, err := range errs {
 			t.Errorf(err)
 		}

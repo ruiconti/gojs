@@ -1,131 +1,160 @@
 package parser
 
 import (
-	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/ruiconti/gojs/internal"
-	"github.com/ruiconti/gojs/lex"
+	l "github.com/ruiconti/gojs/lexer"
 )
 
-type ExprType string
+var TokenEOF = l.Token{l.TEOF, "EOF", "EOF", 0, 0}
+var TokenBOF = l.Token{l.TEOF, "BOF", "BOF", 0, 0}
 
-const (
-	ENodeRoot ExprType = "ENodeRoot"
-	EElision  ExprType = "EElision"
-)
-
-type AstNode interface {
-	Source() string
+type Node interface {
+	S() string
 	Type() ExprType
-	PrettyPrint() string
 }
 
 type Parser struct {
-	seq    []lex.Token
-	cursor int
+	tokens    []l.Token // token slice
+	cursor    uint32    // current index of the token slice
+	cursorOOB bool      // whether cursor is out of bounds
+	seqEnd    uint32    // last index of the token slice
+
 	logger *internal.SimpleLogger
 }
 
-type ExprElision struct{}
-
-func (e *ExprElision) Type() ExprType {
-	return EElision
-}
-
-func (e *ExprElision) Source() string {
-	return ""
-}
-
-func (p *Parser) peek() lex.Token {
-	return p.seq[p.cursor]
-}
-
-func (p *Parser) peekN(n int) (lex.Token, error) {
-	if p.cursor+n >= len(p.seq) {
-		return lex.Token{}, errors.New("EOF")
-	}
-	return p.seq[p.cursor+n], nil
-}
-
-func NewParser(seq []lex.Token, logger *internal.SimpleLogger) *Parser {
+func NewParser(tokens []l.Token, logger *internal.SimpleLogger) *Parser {
 	return &Parser{
-		seq:    seq,
-		cursor: 0,
-		logger: logger,
+		tokens:    tokens,
+		cursor:    0,
+		seqEnd:    uint32(len(tokens) - 1),
+		cursorOOB: false,
+		logger:    logger,
+	}
+}
+
+func (p *Parser) Peek() l.Token {
+	return p.PeekN(0)
+}
+
+// look-ahead and look-behind
+func (p *Parser) PeekN(n int32) l.Token {
+	idx := int32(p.cursor) + n
+	if idx > int32(p.seqEnd) {
+		return TokenEOF
+	} else if idx < 0 {
+		return TokenBOF
+	}
+
+	return p.tokens[idx]
+}
+
+func (p *Parser) Next() {
+	p.consume(1)
+}
+
+func (p *Parser) Backtrack() {
+	p.consume(-1)
+}
+
+func (p *Parser) consume(offset int32) {
+	width := int32(p.cursor) + offset
+	if width == int32(p.seqEnd)+1 {
+		// the last consume
+		p.cursorOOB = true
+	} else if width > int32(p.seqEnd)+1 || width < 0 {
+		p.cursorOOB = true
+		return
+	}
+
+	var consumed strings.Builder
+	for i := int32(p.cursor); i < width; i++ {
+		consumed.WriteString(p.tokens[i].String())
+		if i < width-1 {
+			consumed.WriteString(", ")
+		}
+	}
+	p.Log("consuming %v", consumed.String())
+	p.cursor = uint32(width)
+}
+
+func (p *Parser) Log(msg string, format ...interface{}) {
+	fmsg := fmt.Sprintf(msg, format...)
+	var logmsg string
+	if p.cursor > p.seqEnd {
+		logmsg = fmt.Sprintf("%d: (EOF) %s", p.cursor, fmsg)
+	} else {
+		// current := p.Peek()
+		logmsg = fmt.Sprintf("%d: %s", p.cursor, fmsg)
+	}
+
+	p.logger.Debug(logmsg)
+}
+
+func (p *Parser) guardInfiniteLoop(lastCursor *uint32) {
+	if p.cursor > 0 && p.cursor == *lastCursor {
+		panic("infinite loop detected")
+	} else {
+		*lastCursor = p.cursor
 	}
 }
 
 func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
-	scanner := lex.NewScanner(src, logger)
-	tokens, err := scanner.Scan()
-	if err != nil {
-		logger.Error("Error scanning source: %s", err.Error())
+	lexer := l.NewLexer(src, logger)
+	tokens, errs := lexer.ScanAll()
+	if len(errs) > 0 {
+		for _, e := range errs {
+			logger.Error(e.Error())
+		}
 		panic(1)
 	}
+
 	parser := NewParser(tokens, logger)
-	ast := parser.parseTokens()
+	parser.logger.Debug("PARSER ::")
+	for i, token := range parser.tokens {
+		parser.logger.Debug("T(%d) :: %v", i, token.String())
+	}
+	parser.logger.Debug("\n")
+	ast, err := parser.parseProgram()
+	if err != nil {
+		parser.logger.Error(err.Error())
+		panic(err)
+	}
 	return ast
 }
 
-func (p *Parser) parseTokens() *ExprRootNode {
-	rootNode := &ExprRootNode{
-		children: []AstNode{},
-	}
-	p.logger.Debug("PARSER::")
+func (p *Parser) parseProgram() (*ExprRootNode, error) {
+	var (
+		statements    []Node
+		lastCursorPos uint32 = 0
+	)
 	defer func() {
 		stack := recover()
 		if stack != nil {
-			p.logger.EmitStdout()
+			p.logger.DumpLogs()
 			panic(stack)
 		}
 	}()
 
-	for {
-		token, err := p.peekN(p.cursor)
-		p.logger.Debug("[%d] parser:loop: %v", p.cursor, token)
-		if err != nil {
-			p.logger.Error("[%d] parser:loop: %s", p.cursor, err.Error())
-			break
-		}
-		// id | await | yield
-		if token.T == lex.TIdentifier || token.T == lex.TAwait || token.T == lex.TYield {
-			p.cursor++
-			node := &ExprIdentifierReference{reference: token.Lexeme}
-			rootNode.children = append(rootNode.children, node)
-		}
-		// ;
-		if token.T == lex.TSemicolon {
-			// TODO: Ignoring semicolons for now
-			p.cursor++
-		}
-		// [
-		if token.T == lex.TLeftBracket {
-			// TODO: implement
-			p.cursor++
-		}
-		// unary operator expression
-		if isUnaryOperator(token) {
-			cursor := 0
-			unaryOp, err := p.parseUnaryOperator(&cursor)
-			if err == nil {
-				rootNode.children = append(rootNode.children, unaryOp)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, unaryOp.PrettyPrint())
-				p.cursor = p.cursor + cursor
-			}
-		}
-		// update expression
-		if isUpdateExpression(token) {
-			cursor := 0
-			updateExpr, err := p.parseUpdateExpr(&cursor)
-			if err == nil {
-				rootNode.children = append(rootNode.children, updateExpr)
-				p.logger.Debug("[%d:%d] parser:root:pushToken: %s", p.cursor, cursor, updateExpr.PrettyPrint())
-				p.cursor = p.cursor + cursor
-			}
+	for !p.cursorOOB {
+		token := p.Peek()
+		p.Log("loop %v", token.String())
+
+		if token.Type == l.TSemicolon {
+			p.Log("skipping ;") // TODO: Ignoring semicolons for now
+			p.Next()
+			continue
 		}
 
-		p.cursor++
+		node, err := p.parseExpr()
+		if err == nil {
+			statements = append(statements, node)
+		} else {
+			return &ExprRootNode{children: statements}, err
+		}
+		p.guardInfiniteLoop(&lastCursorPos)
 	}
-	p.logger.Debug("parsed %s", rootNode)
-	return rootNode
+	return &ExprRootNode{children: statements}, nil
 }

@@ -1,17 +1,48 @@
-package lex
+package lexer
+
+import "fmt"
 
 type Token struct {
-	T       TokenType
+	Type    TokenType
 	Lexeme  string
 	Literal interface{}
 	Line    int
 	Column  int
 }
 
+func (t *Token) String() string {
+	return fmt.Sprintf("Token{Lexeme:%v Type:%v Literal:%v}", t.Lexeme, t.Type.S(), t.Literal)
+}
+
 // Map all tokens from the specification
 // https://262.ecma-international.org/#sec-tokens
 // Tokens
 type TokenType int
+
+const UnknownLiteral = "UnknownLiteral"
+
+func (typ *TokenType) Token() Token {
+	return Token{
+		Type:    *typ,
+		Literal: typ.S(),
+		Lexeme:  typ.S(),
+	}
+}
+
+func (typ *TokenType) S() string {
+	dicts := []map[TokenType]string{
+		LiteralNames,
+		ReservedWordNames,
+		PunctuationNames,
+	}
+	for _, dict := range dicts {
+		if name, ok := dict[*typ]; ok {
+			return name
+		}
+	}
+
+	return UnknownLiteral
+}
 
 const (
 	TIdentifier TokenType = iota
@@ -22,6 +53,8 @@ const (
 	TStringLiteral_DoubleQuote
 	TRegularExpressionLiteral
 	TTemplateLiteral
+	TEOF
+	TBOF
 	TUnknown
 
 	// Other
@@ -48,7 +81,6 @@ const (
 	TEllipsis
 	TElse
 	TEnum
-	TEOF
 	TEqual
 	TExport
 	TExtends
@@ -99,6 +131,7 @@ const (
 	TSlash
 	TSlashAssign
 	TStar
+	TStarStar
 	TStarAssign
 	TStrictEqual
 	TStrictNotEqual
@@ -120,6 +153,7 @@ const (
 	TXor
 	TXorAssign
 	TYield
+	TWhitespace
 )
 
 var LiteralNames = map[TokenType]string{
@@ -172,7 +206,6 @@ var ReservedWordNames = map[TokenType]string{
 	TWhile:      "while",
 	TWith:       "with",
 	TYield:      "yield",
-	TEOF:        "TEOF",
 }
 
 var PunctuationNames = map[TokenType]string{
@@ -217,6 +250,7 @@ var PunctuationNames = map[TokenType]string{
 	TPlusAssign:               "+=",
 	TMinusAssign:              "-=",
 	TStarAssign:               "*=",
+	TStarStar:                 "**",
 	TPercentAssign:            "%=",
 	TLeftShiftAssign:          "<<=",
 	TRightShiftAssign:         ">>=",
@@ -230,4 +264,5 @@ var PunctuationNames = map[TokenType]string{
 	TSlash:                    "/",
 	TSlashAssign:              "/=",
 	TTilde:                    "~",
+	TWhitespace:               "<ws>",
 }

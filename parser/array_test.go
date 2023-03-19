@@ -1,31 +1,59 @@
 package parser
 
-import "testing"
+import (
+	"testing"
 
-func TestParseArrayElision(t *testing.T) {
+	"github.com/ruiconti/gojs/internal"
+	l "github.com/ruiconti/gojs/lexer"
+)
+
+func TestParseArray_Simple(t *testing.T) {
 	t.Skip()
-	// src := `[,,, ,,   , ]`
-	// expected := ExprRootNode{
-	// 	children: []AstNode{
-	// 		&ExprArray{
-	// 			elements: []AstNode{
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 				&ExprElision{},
-	// 			},
-	// 		},
-	// 	},
-	// }
-	// got := Parse(src)
-	// CompareRootChildren(
-	// 	t,
-	// 	src,
-	// 	(got.children[0]).(*ExprArray).elements,
-	// 	(expected.children[0]).(*ExprArray).elements,
-	// )
+	t.Run("full of elisions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[,,, ,,   , ]`
+		expected := &ExprRootNode{
+			children: []Node{
+				&ExprArray{
+					elements: []Node{
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+						ExprLitNull,
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, expected)
+	})
+	t.Run("full of primary expressions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[1,2,true,\u3340xa,undefined, null,'foo', "bar",]`
+		expected := &ExprRootNode{
+			children: []Node{
+				&ExprArray{
+					elements: []Node{
+						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "1"}},
+						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "2"}},
+						ExprLitTrue,
+						&ExprIdentifierReference{
+							reference: `\u3340xa`,
+						},
+						ExprLitUndefined,
+						ExprLitNull,
+						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_SingleQuote, Literal: "'foo'"}},
+						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_DoubleQuote, Literal: `"bar"`}},
+						ExprLitNull,
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, expected)
+	})
 }
 
 // ConditionalExpression is way too big
