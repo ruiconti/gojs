@@ -1,4 +1,4 @@
-package lex
+package lexer
 
 // Checks whether the sequence is found next, if it is, advance headIdx e.g.
 //

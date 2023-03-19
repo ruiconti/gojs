@@ -1,4 +1,4 @@
-package lex
+package lexer
 
 // String literals
 type StringLiteralType string
