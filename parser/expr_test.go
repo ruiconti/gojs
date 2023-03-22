@@ -96,6 +96,16 @@ func idExpr(name string) *ExprIdentifierReference {
 	}
 }
 
+func intExpr(n int32) *ExprLiteral[float64] {
+	return &ExprLiteral[float64]{
+		tok: l.Token{
+			Literal: float64(n),
+			Lexeme:  fmt.Sprintf("%d", n),
+			Type:    l.TNumericLiteral,
+		},
+	}
+}
+
 // //////////////
 // Operations //
 // /////////////
@@ -414,7 +424,132 @@ func TestUnaryOperators(t *testing.T) {
 		}
 
 	})
+}
 
+func TestMemberCallExpressions(t *testing.T) {
+
+	t.Run("primary expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				idExpr("foo"),
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("computed property access", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo[bar]`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					object:   idExpr("foo"),
+					property: idExpr("bar"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("static property access", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo.bar`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					object:   idExpr("foo"),
+					property: idExpr("bar"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("template literal as tagged", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := "foo`bar`"
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				// &ExprTaggedTemplate{
+				// 	tag:      idExpr("foo"),
+				// 	template: templateExpr("bar"),
+				// },
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("super property", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `super.foo`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					object:   MakeLiteralExpr(l.TSuper),
+					property: idExpr("foo"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("meta property", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `new.target`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMetaProperty{
+					meta:     idExpr("new"),
+					property: idExpr("target"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("new expression with arguments", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `new foo(bar)`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprNew{
+					callee: idExpr("foo"),
+					// arguments: []Node{
+					// 	idExpr("bar"),
+					// },
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("private identifier", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo.#bar`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				// &ExprPrivateIdentifier{
+				// 	object:   idExpr("foo"),
+				// 	property: idExpr("#bar"),
+				// },
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
 	t.Run("member expressions", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `foo.bar[baz][foo2].bar2`
@@ -439,7 +574,7 @@ func TestUnaryOperators(t *testing.T) {
 		AssertExprEqual(t, logger, got, exp)
 	})
 
-	t.Run("new expression called with member expression", func(t *testing.T) {
+	t.Run("new expression with member expression", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `new foo.bar[baz][foo2].bar2`
 		got := Parse(logger, src)
@@ -466,6 +601,164 @@ func TestUnaryOperators(t *testing.T) {
 		AssertExprEqual(t, logger, got, exp)
 	})
 
+	t.Run("new expression recursive", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `new new new new foo[0 >> 2]`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprNew{
+					callee: &ExprNew{
+						callee: &ExprNew{
+							callee: &ExprNew{
+								callee: &ExprMemberAccess{
+									object:   idExpr("foo"),
+									property: binExpr(intExpr(0), intExpr(2), l.TRightShift),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+}
+
+func TestCallExpression(t *testing.T) {
+	t.Run("simple call expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo(bar)`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee: idExpr("foo"),
+					arguments: []Node{
+						idExpr("bar"),
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with template literal", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := "foo`bar`"
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee:    idExpr("foo"),
+					arguments: []Node{
+						// templateExpr("bar"),
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with computed property", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo[bar()]`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					object: idExpr("foo"),
+					property: &ExprCall{
+						callee:    idExpr("bar"),
+						arguments: []Node{},
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with super", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `super.foo()`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee: &ExprSuperProp{
+						object:   idExpr("super"),
+						property: idExpr("foo"),
+					},
+					arguments: []Node{},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with import", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `import("foo.js")`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee:    idExpr("import"),
+					arguments: []Node{
+						// stringExpr("foo.js"),
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with private identifier", func(t *testing.T) {
+		t.Skip()
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo.#bar`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				// &ExprPrivateIdentifier{
+				// 	object:   idExpr("foo"),
+				// 	property: idExpr("#bar"),
+				// },
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("nested call expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo(bar(baz(qux)))`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee: idExpr("foo"),
+					arguments: []Node{
+						&ExprCall{
+							callee: idExpr("bar"),
+							arguments: []Node{
+								&ExprCall{
+									callee: idExpr("baz"),
+									arguments: []Node{
+										idExpr("qux"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
 }
 
 // //////////
