@@ -191,7 +191,8 @@ func (e *ExprBinaryOp) S() string {
 const ENew ExprType = "ExprNew"
 
 type ExprNew struct {
-	callee Node
+	callee    Node
+	arguments []Node
 }
 
 func (e *ExprNew) Type() ExprType {
@@ -220,13 +221,97 @@ func (e *ExprMemberAccess) S() string {
 	if e == nil {
 		panic("invalid object: nil")
 	}
-	if e.property == nil {
-		panic("invalid nil access: property")
-	}
-	if e.object == nil {
-		panic("invalid nil access: object")
+	return fmt.Sprintf("(. %s %s)", e.property.S(), e.object.S())
+}
+
+// ///////////////////
+// ExprSuperProp //
+// ///////////////////
+const ESuperProp ExprType = "ExprSuperProp"
+
+type ExprSuperProp struct {
+	object   Node
+	property Node
+}
+
+func (e *ExprSuperProp) Type() ExprType {
+	return ESuperProp
+}
+
+func (e *ExprSuperProp) S() string {
+	if e == nil {
+		panic("invalid object: nil")
 	}
 	return fmt.Sprintf("(. %s %s)", e.property.S(), e.object.S())
+}
+
+// ///////////////////
+// ExprMetaProperty //
+// ///////////////////
+const EMetaProperty ExprType = "ExprMetaProperty"
+
+type ExprMetaProperty struct {
+	meta     Node
+	property Node
+}
+
+func (e *ExprMetaProperty) Type() ExprType {
+	return EMetaProperty
+}
+
+func (e *ExprMetaProperty) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	return fmt.Sprintf("(. %s %s)", e.meta.S(), e.property.S())
+}
+
+// ///////////////////
+// ExprCall //
+// ///////////////////
+const ECall ExprType = "ExprCall"
+
+type ExprCall struct {
+	callee    Node
+	arguments []Node
+}
+
+func (e *ExprCall) Type() ExprType {
+	return ECall
+}
+
+func (e *ExprCall) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	var args strings.Builder
+	for i, arg := range e.arguments {
+		args.WriteString(arg.S())
+		if i < len(e.arguments)-1 {
+			args.WriteString(" ")
+		}
+	}
+	return fmt.Sprintf("(%s %s)", e.callee.S(), args.String())
+}
+
+// ///////////////////
+// ExprCall //
+// ///////////////////
+const NSpreadElement ExprType = "SpreadElement"
+
+type SpreadElement struct {
+	argument Node
+}
+
+func (e *SpreadElement) Type() ExprType {
+	return ECall
+}
+
+func (e *SpreadElement) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	return fmt.Sprintf("(... %s)", e.argument.S())
 }
 
 // //////////////////////////
@@ -404,8 +489,8 @@ func (p *Parser) parseExponentialExpr() (Node, error) {
 }
 
 // UnaryExpression ::=
-// | UpdateExpression
 // | UnaryOp UnaryExpression
+// | UpdateExpression
 // | AwaitExpression (TODO)
 //
 // UnaryOp ::= delete | void | typeof | + | - | ~ | !
@@ -447,29 +532,30 @@ func (p *Parser) parseUnaryOperator() (Node, error) {
 }
 
 // UpdateExpression ::=
-// | LeftHandSideExpression (++ | --)
+// | LeftHandSideExpression (++ | --)?
 // | (++ | --) UnaryExpression
 func (p *Parser) parseUpdateExpr() (Node, error) {
 	p.Log("parseUpdateExpr")
 	var (
-		exprLeft, exprUnary Node
-		err                 error
-		unaryOpSet          = newSet(UpdateOperators...)
-		match               bool
+		exprUpdate Node
+		err        error
+		unaryOpSet = newSet(UpdateOperators...)
+		match      bool
 	)
 
-	// LeftHandSideExpression (++ | --)*
-	exprLeft, err = p.parseLeftHandSideExpr()
+	// LeftHandSideExpression (++ | --)?
+	exprUpdate, err = p.parseLeftHandSideExpr()
 	if err == nil {
-		// (++ | --)
 		token := p.Peek()
-		if _, ok := unaryOpSet[token.Type]; !ok {
-			return exprLeft, nil
-		} else {
+		if _, ok := unaryOpSet[token.Type]; ok {
+			// UpdateExpression ::= LeftHandSideExpression (++ | --)
 			return &ExprUnaryOp{ // TODO: make an UpdateExpr
-				operand:  exprLeft,
+				operand:  exprUpdate,
 				operator: token,
 			}, nil
+		} else {
+			// UpdateExpression ::= LeftHandSideExpression
+			return exprUpdate, nil
 		}
 	}
 
@@ -488,25 +574,26 @@ func (p *Parser) parseUpdateExpr() (Node, error) {
 		}
 
 		match = true
-		exprUnary = &ExprUnaryOp{
+		exprUpdate = &ExprUnaryOp{
 			operator: token,
 			operand:  operand,
 		}
 		p.guardInfiniteLoop(&lastCursor)
 	}
 
+	// TODO: if exprUpdate != nil {
 	if match {
-		return exprUnary, nil
+		return exprUpdate, nil
 	} else {
-		return nil, err
+		return nil, fmt.Errorf("parseUpdateExpr rejected")
 	}
 }
 
 // parseLeftHandSideExpr parses the following grammar:
 //
 // LeftHandSideExpression ::=
-// | NewExpression
-// | CallExpression     (TODO)
+// NewExpression
+// | CallExpression
 // | OptionalExpression (TODO)
 func (p *Parser) parseLeftHandSideExpr() (Node, error) {
 	p.Log("parseLeftHandSideExpr")
@@ -514,16 +601,177 @@ func (p *Parser) parseLeftHandSideExpr() (Node, error) {
 		expr Node
 		err  error
 	)
+
+	p.saveCheckpoint()
+	if expr, err = p.parseCallExpr(); err == nil {
+		return expr, nil
+	}
+	p.restoreCheckpoint()
+
+	p.saveCheckpoint()
 	if expr, err = p.parseNewExpr(); err == nil {
 		return expr, nil
 	}
+	p.restoreCheckpoint()
 
-	// reset state
-	// TODO: parseCallExpr
-
-	// reset state
 	// TODO: parseOptionalExpression
 	return nil, fmt.Errorf("parseLeftHandSideExpr rejected")
+}
+
+// parseCallExpr parses the following grammar:
+//
+// CallExpression ::=
+// | MemberExpression '(' ArgumentList? ')'
+// | SuperCall
+// | ImportCall (TODO)
+// | CallExpression '(' ArgumentList? ')'
+// | CallExpression '[' Expression ']'
+// | CallExpression '.' IdentifierName
+// | CallExpression TemplateLiteral (TODO)
+// | CallExpression '.' PrivateIdentifier
+//
+// transforming the productions removing left recursion and expanding:
+//
+// CallExpression ::=
+// | MemberExpression CallExpressionRest
+// | SuperCall CallExpressionRest
+// | ImportCall CallExpressionRest (TODO)
+
+// CallExpressionRest ::=
+// | '(' ArgumentList? ')' CallExpressionRest
+// | '[' Expression ']' CallExpressionRest
+// | '.' IdentifierName CallExpressionRest
+// | TemplateLiteral CallExpressionRest (TODO)
+// | '.' PrivateIdentifier CallExpressionRest
+// | ε
+func (p *Parser) parseCallExpr() (Node, error) {
+	p.Log("parseCallExpr")
+	var (
+		exprCall Node
+		err      error
+	)
+
+	exprCall, err = p.parseMemberExpr()
+	if err != nil {
+		// CallExpression ::= SuperCall CallExpressionRest
+		if p.Peek().Type == l.TSuper {
+			exprCall = &ExprCall{
+				callee: MakeLiteralExpr(l.TSuper),
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	// TODO:
+	// exprImportCall, err := p.parseImportCall()
+
+restLoop:
+	for {
+		token := p.Peek()
+
+		switch token.Type {
+		case l.TLeftParen:
+			// T ::= '(' ArgumentList? ')' CallExpressionRest
+			// T ::= '(' ('...'? AssignmentExpression ArgumentListRest)* ')' CallExpressionRest
+			//
+			// ArgumentListRest ::= (',' '...'? AssignmentExpression)*
+			arguments := []Node{}
+			p.Next() // consume '('
+			var exprAssign Node
+			switch p.Peek().Type {
+			case l.TEllipsis:
+				// fn(...a
+				p.Next()                              // consume '...'
+				exprAssign, err = p.parseAssignExpr() // consume AssignExpression
+				if err != nil {
+					return nil, err
+				}
+				exprAssign = &SpreadElement{exprAssign}
+			case l.TRightParen:
+				// fn()
+				p.Next() // consume ')'
+				exprCall = &ExprCall{
+					callee:    exprCall,
+					arguments: []Node{},
+				}
+				continue restLoop
+			default:
+				// fn(a
+				exprAssign, err = p.parseAssignExpr() // consume AssignExpression
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			arguments = append(arguments, exprAssign) // populate arguments
+
+		argumentsLoop:
+			for {
+				// ',' '...'? AssignmentExpression ArgumentListRest
+				switch p.Peek().Type {
+				case l.TComma:
+					p.Next() // consume ','
+					if p.Peek().Type == l.TEllipsis {
+						p.Next()                                               // consume '...'
+						if exprAssign, err = p.parseAssignExpr(); err != nil { // consume AssignExpression
+							return nil, err
+						}
+
+						exprAssign = &SpreadElement{argument: exprAssign}
+					} else {
+						if exprAssign, err = p.parseAssignExpr(); err != nil { // consume AssignExpression
+							return nil, err
+						}
+					}
+
+					arguments = append(arguments, exprAssign) // populate arguments
+				case l.TRightParen:
+					p.Next() // consume ')'
+					break argumentsLoop
+				}
+			}
+
+			exprCall = &ExprCall{
+				callee:    exprCall,
+				arguments: arguments,
+			}
+
+		case l.TPeriod:
+			// T ::= '.' PrivateIdentifier CallExpressionRest
+			p.Next() // consume '.'
+			afterPeriod := p.Peek()
+			if afterPeriod.Type == l.TIdentifier {
+				exprCall = &ExprMemberAccess{
+					object: exprCall,
+					property: &ExprIdentifierReference{
+						reference: afterPeriod.Lexeme,
+					},
+				}
+				p.Next() // consume identifier
+			} else {
+				return nil, fmt.Errorf("expected identifier after dot")
+			}
+		case l.TLeftBracket:
+			// T ::= '[' Expression ']' CallExpressionRest
+			p.Next()                                    // consume '['
+			if expr, err := p.parseExpr(); err == nil { // parseExpr consumes the expression's tokens
+				if p.Peek().Type == l.TRightBracket {
+					exprCall = &ExprMemberAccess{
+						object:   exprCall,
+						property: expr,
+					}
+					p.Next() // consume ']'
+				}
+			} else {
+				return nil, fmt.Errorf("expected valid expression after left bracket")
+			}
+		default:
+			break restLoop
+		}
+	}
+
+	return exprCall, nil
 }
 
 // parseLeftHandSideExpr parses the following grammar:
@@ -532,50 +780,138 @@ func (p *Parser) parseLeftHandSideExpr() (Node, error) {
 func (p *Parser) parseNewExpr() (Node, error) {
 	p.Log("parseNewExpr")
 	var (
-		expr Node
-		err  error
+		exprNew Node
+		err     error
+		match   bool
 	)
 
-	token := p.Peek()
-	if token.Type == l.TNew {
-		// NewExpression ::= new NewExpression
-		p.Next() // consumes new
-		callee, err := p.parseNewExpr()
-		if err != nil {
-			return nil, err
+loop:
+	for {
+		switch p.Peek().Type {
+		case l.TNew:
+			// NewExpression ::= 'new' MemberExpression
+			p.Next() // consume 'new'
+			if p.Peek().Type == l.TNew {
+				newExprRest, err := p.parseNewExpr()
+				if err != nil {
+					return nil, err
+				}
+				exprNew = &ExprNew{
+					callee: newExprRest,
+				}
+				// this will consume the next 'new' token indefinitely
+				// until it ends
+				return exprNew, nil
+			}
+
+			exprNew, err = p.parseMemberExpr()
+			if err != nil {
+				return nil, err
+			}
+
+			arguments := []Node{}
+			if p.Peek().Type == l.TLeftParen {
+				// NewExpression ::= 'new' MemberExpression ArgumentsRest
+				// ArgumentsRest ::= ('(' ('...'? AssignmentExpression ArgumentListRest)* ')')*
+				//
+				// ArgumentListRest ::= (',' '...'? AssignmentExpression)*
+				p.Next() // consume '('
+				var exprAssign Node
+
+				switch p.Peek().Type {
+				case l.TEllipsis:
+					// fn(...a
+					p.Next()                              // consume '...'
+					exprAssign, err = p.parseAssignExpr() // consume AssignExpression
+					if err != nil {
+						return nil, err
+					}
+					exprAssign = &SpreadElement{exprAssign}
+				case l.TRightParen:
+					// fn()
+					p.Next() // consume ')'
+					exprNew = &ExprNew{
+						callee:    exprNew,
+						arguments: []Node{},
+					}
+				default:
+					// fn(a
+					exprAssign, err = p.parseAssignExpr() // consume AssignExpression
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				arguments = append(arguments, exprAssign) // populate arguments
+
+			argumentsLoop:
+				for {
+					// ',' '...'? AssignmentExpression ArgumentListRest
+					switch p.Peek().Type {
+					case l.TComma:
+						p.Next() // consume ','
+						if p.Peek().Type == l.TEllipsis {
+							p.Next()                                               // consume '...'
+							if exprAssign, err = p.parseAssignExpr(); err != nil { // consume AssignExpression
+								return nil, err
+							}
+
+							exprAssign = &SpreadElement{argument: exprAssign}
+						} else {
+							if exprAssign, err = p.parseAssignExpr(); err != nil { // consume AssignExpression
+								return nil, err
+							}
+						}
+
+						arguments = append(arguments, exprAssign) // populate arguments
+					case l.TRightParen:
+						p.Next() // consume ')'
+						break argumentsLoop
+					}
+				}
+
+			}
+
+			exprNew = &ExprNew{
+				callee:    exprNew,
+				arguments: arguments,
+			}
+			match = true
+		default:
+			break loop
 		}
-
-		return &ExprNew{
-			callee: callee,
-		}, nil
 	}
 
-	// NewExpression ::= MemberExpression
-	if expr, err = p.parseMemberExpr(); err == nil {
-		return expr, nil
+	if match {
+		// NewExpression ::= MemberExpression
+		return exprNew, nil
+	} else {
+		return nil, fmt.Errorf("rejected on newExpression")
 	}
-	return nil, err
 }
 
 // parseMemberExpr parses the following grammar:
 //
 // MemberExpression ::=
-// | PrimaryExpression
+// PrimaryExpression
 // | MemberExpression | (. IdentifierName | [ Expression ] | TemplateLiteral | . PrivateIdentifier)
-// | SuperProperty                  (TODO)
-// | MetaProperty  							    (TODO)
-// | new MemberExpression Arguments (TODO)
+// | SuperProperty
+// | MetaProperty
+// | 'new' MemberExpression Arguments
+//
+// SuperProperty ::= 'super' ('[' Expression ']' | '.' IdentifierName)
+// MetaProperty ::= 'new' '.' 'target' | 'import' '.' 'meta'
 //
 // Transforming to remove the left-recursion:
 //
 // MemberExpression ::=
-// | PrimaryExpression
-// | MemberExpression' ([ Expr ] MemberExpression')*
-// | MemberExpression' (. IdentifierName MemberExpression')*
-// | MemberExpression' (TemplateLiteral MemberExpression')* (TODO)
+// | MemberExpressionRest ('[' Expr ']' MemberExpressionRest)*
+// | MemberExpressionRest ('.' IdentifierName MemberExpression')*
+// | MemberExpressionRest (TemplateLiteral MemberExpression')* (TODO)
+// | 'new' MemberExpression Arguments
 //
-// MemberExpression' ::=
-// | PrimaryExpression | SuperProperty | MetaProperty | new MemberExpression Arguments
+// MemberExpressionRest ::=
+// PrimaryExpression | SuperProperty | MetaProperty | new MemberExpression Arguments
 func (p *Parser) parseMemberExpr() (Node, error) {
 	p.Log("parseMemberExpr")
 	var (
@@ -584,8 +920,16 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 	)
 
 	// MemberExpression ::= MemberExpression'
-	if exprMember, err = p.parsePrimaryExpr(); err != nil {
-		return nil, err
+	exprMember, err = p.parsePrimaryExpr()
+	if err != nil {
+		switch p.Peek().Type {
+		case l.TSuper:
+			// SuperProperty :: = 'super' ('[' Expression ']' | '.' IdentifierName)
+			exprMember = MakeLiteralExpr(l.TSuper)
+			p.Next() // consume 'super'
+		default:
+			return nil, err
+		}
 	}
 
 	// MemberExpression ::=
@@ -597,7 +941,7 @@ loop:
 		token := p.Peek()
 		switch token.Type {
 		case l.TPeriod:
-			// MemberExpression ::= (. IdentifierName MemberExpression')*
+			// MemberExpression ::= ('.' IdentifierName MemberExpression')*
 			p.Next() // consume period
 			afterPeriod := p.Peek()
 			if afterPeriod.Type == l.TIdentifier {
@@ -613,7 +957,7 @@ loop:
 				return nil, fmt.Errorf("expected identifier after dot")
 			}
 		case l.TLeftBracket:
-			// MemberExpression ::= ([ Expr ] MemberExpression')*
+			// MemberExpression ::= ('[' Expr ']' MemberExpression')*
 			p.Next()                                    // consume left bracket
 			if expr, err := p.parseExpr(); err == nil { // parseExpr consumes the expression's tokens
 				if p.Peek().Type == l.TRightBracket {
@@ -633,14 +977,7 @@ loop:
 		p.guardInfiniteLoop(&lastCursor)
 	}
 
-	switch exprMember.(type) {
-	case *ExprMemberAccess:
-		return exprMember, nil
-		// panic(t.S())
-	default:
-		return exprMember, nil
-	}
-	// return exprMember, nil
+	return exprMember, nil
 }
 
 // PrimaryExpression ::=

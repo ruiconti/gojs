@@ -17,21 +17,23 @@ type Node interface {
 }
 
 type Parser struct {
-	tokens    []l.Token // token slice
-	cursor    uint32    // current index of the token slice
-	cursorOOB bool      // whether cursor is out of bounds
-	seqEnd    uint32    // last index of the token slice
+	tokens      []l.Token // token slice
+	checkpoints []uint32  // checkpoints for backtracking
+	cursor      uint32    // current index of the token slice
+	cursorOOB   bool      // whether cursor is out of bounds
+	seqEnd      uint32    // last index of the token slice
 
 	logger *internal.SimpleLogger
 }
 
 func NewParser(tokens []l.Token, logger *internal.SimpleLogger) *Parser {
 	return &Parser{
-		tokens:    tokens,
-		cursor:    0,
-		seqEnd:    uint32(len(tokens) - 1),
-		cursorOOB: false,
-		logger:    logger,
+		tokens:      tokens,
+		cursor:      0,
+		seqEnd:      uint32(len(tokens) - 1),
+		checkpoints: make([]uint32, 0),
+		cursorOOB:   false,
+		logger:      logger,
 	}
 }
 
@@ -101,7 +103,21 @@ func (p *Parser) guardInfiniteLoop(lastCursor *uint32) {
 	}
 }
 
+func (p *Parser) saveCheckpoint() {
+	p.checkpoints = append(p.checkpoints, p.cursor)
+}
+
+func (p *Parser) restoreCheckpoint() {
+	lastIdx := len(p.checkpoints) - 1
+	p.cursor = p.checkpoints[lastIdx]
+	p.checkpoints = p.checkpoints[:lastIdx]
+}
+
 func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
+	var (
+		ast *ExprRootNode
+		err error
+	)
 	lexer := l.NewLexer(src, logger)
 	tokens, errs := lexer.ScanAll()
 	if len(errs) > 0 {
@@ -112,16 +128,26 @@ func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
 	}
 
 	parser := NewParser(tokens, logger)
+	defer func() {
+		stack := recover()
+		if stack != nil {
+			parser.logger.Debug("AST :: %v", ast.S())
+			parser.logger.DumpLogs()
+			panic(stack)
+		}
+	}()
+
 	parser.logger.Debug("PARSER ::")
 	for i, token := range parser.tokens {
 		parser.logger.Debug("T(%d) :: %v", i, token.String())
 	}
 	parser.logger.Debug("\n")
-	ast, err := parser.parseProgram()
+	ast, err = parser.parseProgram()
 	if err != nil {
 		parser.logger.Error(err.Error())
 		panic(err)
 	}
+	parser.logger.Debug("AST :: %v", ast.S())
 	return ast
 }
 
@@ -151,6 +177,8 @@ func (p *Parser) parseProgram() (*ExprRootNode, error) {
 		node, err := p.parseExpr()
 		if err == nil {
 			statements = append(statements, node)
+		} else if node == nil {
+			panic("boo")
 		} else {
 			return &ExprRootNode{children: statements}, err
 		}
