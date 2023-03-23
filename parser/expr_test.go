@@ -90,6 +90,22 @@ func binExpr(left, right Node, op l.TokenType) *ExprBinaryOp {
 	}
 }
 
+func stringExpr(s string) *ExprLiteral[string] {
+	var st l.TokenType
+	if s[0] == '"' {
+		st = l.TStringLiteral_DoubleQuote
+	} else {
+		st = l.TStringLiteral_SingleQuote
+	}
+	return &ExprLiteral[string]{
+		tok: l.Token{
+			Literal: s,
+			Lexeme:  s,
+			Type:    st,
+		},
+	}
+}
+
 func idExpr(name string) *ExprIdentifierReference {
 	return &ExprIdentifierReference{
 		reference: name,
@@ -501,8 +517,7 @@ func TestMemberCallExpressions(t *testing.T) {
 		AssertExprEqual(t, logger, got, exp)
 	})
 
-	t.Run("meta property", func(t *testing.T) {
-		t.Skip()
+	t.Run("meta property: new.target", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `new.target`
 		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
@@ -517,8 +532,21 @@ func TestMemberCallExpressions(t *testing.T) {
 		AssertExprEqual(t, logger, got, exp)
 	})
 
+	t.Run("meta property: import.meta", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `import.meta`
+		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMetaProperty{
+					meta:     idExpr("import"),
+					property: idExpr("meta"),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
 	t.Run("new expression with arguments", func(t *testing.T) {
-		t.Skip()
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `new foo(bar)`
 		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
@@ -526,9 +554,9 @@ func TestMemberCallExpressions(t *testing.T) {
 			children: []Node{
 				&ExprNew{
 					callee: idExpr("foo"),
-					// arguments: []Node{
-					// 	idExpr("bar"),
-					// },
+					arguments: []Node{
+						idExpr("bar"),
+					},
 				},
 			},
 		}
@@ -700,16 +728,32 @@ func TestCallExpression(t *testing.T) {
 	})
 
 	t.Run("call expression with import", func(t *testing.T) {
-		t.Skip()
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `import("foo.js")`
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{
+				&ExprImportCall{
+					source: stringExpr(`"foo.js"`),
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("nested call expression with import", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `import("foo.js")(bar,'baz')`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
 				&ExprCall{
-					callee:    idExpr("import"),
+					callee: &ExprImportCall{
+						source: stringExpr(`"foo.js"`),
+					},
 					arguments: []Node{
-						// stringExpr("foo.js"),
+						idExpr("bar"),
+						stringExpr(`'baz'`),
 					},
 				},
 			},

@@ -295,7 +295,7 @@ func (e *ExprCall) S() string {
 }
 
 // ///////////////////
-// ExprCall //
+// SpreadElement //
 // ///////////////////
 const NSpreadElement ExprType = "SpreadElement"
 
@@ -312,6 +312,26 @@ func (e *SpreadElement) S() string {
 		panic("invalid object: nil")
 	}
 	return fmt.Sprintf("(... %s)", e.argument.S())
+}
+
+// ///////////////////
+// ExprImportCall //
+// ///////////////////
+const EImportCall ExprType = "ExprImportCall"
+
+type ExprImportCall struct {
+	source Node
+}
+
+func (e *ExprImportCall) Type() ExprType {
+	return EImportCall
+}
+
+func (e *ExprImportCall) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	return fmt.Sprintf("(import %s)", e.source.S())
 }
 
 // //////////////////////////
@@ -618,6 +638,28 @@ func (p *Parser) parseLeftHandSideExpr() (Node, error) {
 	return nil, fmt.Errorf("parseLeftHandSideExpr rejected")
 }
 
+func (p *Parser) parseImportCall() (Node, error) {
+	if p.Peek().Type == l.TImport {
+		p.Next() // consume 'import'
+		if p.Peek().Type != l.TLeftParen {
+			return nil, fmt.Errorf("parseImportCall rejected")
+		}
+		p.Next() // consume '('
+		expr, err := p.parseAssignExpr()
+		if err != nil {
+			return nil, err
+		}
+		if p.Peek().Type != l.TRightParen {
+			return nil, fmt.Errorf("parseImportCall rejected")
+		}
+		p.Next() // consume ')'
+		return &ExprImportCall{
+			source: expr,
+		}, nil
+	}
+	return nil, fmt.Errorf("parseImportCall rejected")
+}
+
 // parseCallExpr parses the following grammar:
 //
 // CallExpression ::=
@@ -654,17 +696,23 @@ func (p *Parser) parseCallExpr() (Node, error) {
 	exprCall, err = p.parseMemberExpr()
 	if err != nil {
 		// CallExpression ::= SuperCall CallExpressionRest
-		if p.Peek().Type == l.TSuper {
+		switch p.Peek().Type {
+		case l.TSuper:
 			exprCall = &ExprCall{
 				callee: MakeLiteralExpr(l.TSuper),
 			}
-		} else {
-			return nil, err
+		case l.TImport:
+			// CallExpression ::= ImportCall CallExpressionRest
+			exprImportCall, err := p.parseImportCall()
+			if err == nil {
+				exprCall = exprImportCall
+			} else {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("parseCallExpr rejected")
 		}
 	}
-
-	// TODO:
-	// exprImportCall, err := p.parseImportCall()
 
 restLoop:
 	for {
@@ -927,6 +975,34 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 			// SuperProperty :: = 'super' ('[' Expression ']' | '.' IdentifierName)
 			exprMember = MakeLiteralExpr(l.TSuper)
 			p.Next() // consume 'super'
+		case l.TNew:
+			// MetaProperty ::= 'new' '.' 'target'
+			if p.PeekN(1).Type == l.TPeriod && p.PeekN(2).Lexeme == "target" {
+				p.Next() // consume 'new'
+				p.Next() // consume '.'
+				p.Next() // consume 'target'
+				return &ExprMetaProperty{
+					meta: MakeLiteralExpr(l.TNew),
+					property: &ExprIdentifierReference{
+						reference: "target",
+					},
+				}, nil
+			}
+			return nil, fmt.Errorf("invalid meta property")
+		case l.TImport:
+			// MetaProperty ::= 'import' '.' 'meta'
+			if p.PeekN(1).Type == l.TPeriod && p.PeekN(2).Lexeme == "meta" {
+				p.Next() // consume 'import'
+				p.Next() // consume '.'
+				p.Next() // consume 'meta'
+				return &ExprMetaProperty{
+					meta: MakeLiteralExpr(l.TImport),
+					property: &ExprIdentifierReference{
+						reference: "meta",
+					},
+				}, nil
+			}
+			return nil, fmt.Errorf("invalid meta property")
 		default:
 			return nil, err
 		}
