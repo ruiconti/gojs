@@ -7,7 +7,7 @@ import (
 )
 
 func TestPunctuation_Single(t *testing.T) {
-	src := `;()~:{}[];,~^%`
+	src := `;()~:{}[];,~^%##`
 
 	expected := []Token{
 		{Type: TSemicolon, Lexeme: ";", Literal: nil, Line: 0, Column: 0},
@@ -24,6 +24,8 @@ func TestPunctuation_Single(t *testing.T) {
 		{Type: TTilde, Lexeme: "~", Literal: nil, Line: 0, Column: 0},
 		{Type: TXor, Lexeme: "^", Literal: nil, Line: 0, Column: 0},
 		{Type: TPercent, Lexeme: "%", Literal: nil, Line: 0, Column: 0},
+		{Type: TNumberSign, Lexeme: "#", Literal: nil, Line: 0, Column: 0},
+		{Type: TNumberSign, Lexeme: "#", Literal: nil, Line: 0, Column: 0},
 	}
 
 	logger := gojs.NewSimpleLogger(gojs.ModeDebug)

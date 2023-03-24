@@ -90,6 +90,7 @@ const (
 	TFunction
 	TGreaterThan
 	TGreaterThanEqual
+	TNumberSign
 	TIf
 	TImport
 	TIn
@@ -230,6 +231,7 @@ var PunctuationNames = map[TokenType]string{
 	TPlus:                     "+",
 	TMinus:                    "-",
 	TStar:                     "*",
+	TNumberSign:               "#",
 	TPercent:                  "%",
 	TPlusPlus:                 "++",
 	TMinusMinus:               "--",
