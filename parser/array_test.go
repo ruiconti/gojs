@@ -39,8 +39,8 @@ func TestParseArray_Simple(t *testing.T) {
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "1"}},
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "2"}},
 						ExprLitTrue,
-						&ExprIdentifierReference{
-							reference: `\u3340xa`,
+						&ExprIdentifier{
+							name: `\u3340xa`,
 						},
 						ExprLitUndefined,
 						ExprLitNull,

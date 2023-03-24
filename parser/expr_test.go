@@ -40,14 +40,14 @@ func TestPrimaryLiterals(t *testing.T) {
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{
-				&ExprIdentifierReference{
-					reference: `\u3034baz`,
+				&ExprIdentifier{
+					name: `\u3034baz`,
 				},
-				&ExprIdentifierReference{
-					reference: `\u9023\u4930\u1102x`,
+				&ExprIdentifier{
+					name: `\u9023\u4930\u1102x`,
 				},
-				&ExprIdentifierReference{
-					reference: `b\u400e\u99a0`,
+				&ExprIdentifier{
+					name: `b\u400e\u99a0`,
 				},
 			},
 		}
@@ -67,14 +67,14 @@ func TestExprIdentifierReference(t *testing.T) {
 	got := Parse(logger, src)
 	exp := &ExprRootNode{
 		children: []Node{
-			&ExprIdentifierReference{
-				reference: "foo",
+			&ExprIdentifier{
+				name: "foo",
 			},
-			&ExprIdentifierReference{
-				reference: "bar",
+			&ExprIdentifier{
+				name: "bar",
 			},
-			&ExprIdentifierReference{
-				reference: "baz",
+			&ExprIdentifier{
+				name: "baz",
 			},
 		},
 	}
@@ -106,9 +106,9 @@ func stringExpr(s string) *ExprLiteral[string] {
 	}
 }
 
-func idExpr(name string) *ExprIdentifierReference {
-	return &ExprIdentifierReference{
-		reference: name,
+func idExpr(name string) *ExprIdentifier {
+	return &ExprIdentifier{
+		name: name,
 	}
 }
 
@@ -304,8 +304,8 @@ func TestUnaryOperators(t *testing.T) {
 			exp := &ExprRootNode{
 				children: []Node{
 					&ExprUnaryOp{
-						operand: &ExprIdentifierReference{
-							reference: "foo",
+						operand: &ExprIdentifier{
+							name: "foo",
 						},
 						operator: l.Token{
 							Type:    operator,
@@ -325,8 +325,8 @@ func TestUnaryOperators(t *testing.T) {
 			exp := &ExprRootNode{
 				children: []Node{
 					&ExprUnaryOp{
-						operand: &ExprIdentifierReference{
-							reference: "foo",
+						operand: &ExprIdentifier{
+							name: "foo",
 						},
 						operator: operator.Token(),
 					},
@@ -351,8 +351,8 @@ func TestUnaryOperators(t *testing.T) {
 	// 		unaryOpExpr := func(binding string) *ExprUnaryOp {
 	// 			return &ExprUnaryOp{
 	// 				operator: operator,
-	// 				operand: &ExprIdentifierReference{
-	// 					reference: binding,
+	// 				operand: &ExprIdentifier{
+	// 					name: binding,
 	// 				},
 	// 			}
 	// 		}
@@ -400,8 +400,8 @@ func TestUnaryOperators(t *testing.T) {
 						operand: &ExprUnaryOp{
 							operand: &ExprUnaryOp{
 								operand: &ExprUnaryOp{
-									operand: &ExprIdentifierReference{
-										reference: "bar",
+									operand: &ExprIdentifier{
+										name: "bar",
 									},
 									operator: operatorToken,
 								},
@@ -564,16 +564,17 @@ func TestMemberCallExpressions(t *testing.T) {
 	})
 
 	t.Run("private identifier", func(t *testing.T) {
-		t.Skip()
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `foo.#bar`
 		got := Parse(internal.NewSimpleLogger(internal.ModeDebug), src)
 		exp := &ExprRootNode{
 			children: []Node{
-				// &ExprPrivateIdentifier{
-				// 	object:   idExpr("foo"),
-				// 	property: idExpr("#bar"),
-				// },
+				&ExprMemberAccess{
+					object: idExpr("foo"),
+					property: &ExprPrivateIdentifier{
+						name: "bar",
+					},
+				},
 			},
 		}
 		AssertExprEqual(t, logger, got, exp)
@@ -762,16 +763,20 @@ func TestCallExpression(t *testing.T) {
 	})
 
 	t.Run("call expression with private identifier", func(t *testing.T) {
-		t.Skip()
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
-		src := `foo.#bar`
+		src := `foo.#bar(a, b)`
 		got := Parse(logger, src)
 		exp := &ExprRootNode{
 			children: []Node{
-				// &ExprPrivateIdentifier{
-				// 	object:   idExpr("foo"),
-				// 	property: idExpr("#bar"),
-				// },
+				&ExprCall{
+					callee: &ExprMemberAccess{
+						object: idExpr("foo"),
+						property: &ExprPrivateIdentifier{
+							name: "bar",
+						},
+					},
+					arguments: []Node{idExpr("a"), idExpr("b")},
+				},
 			},
 		}
 		AssertExprEqual(t, logger, got, exp)

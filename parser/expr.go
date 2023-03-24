@@ -53,18 +53,35 @@ func (e *ExprRootNode) S() string {
 // /////////////////
 // ExprIdentifier //
 // /////////////////
-const EIdentifierReference ExprType = "EIdentifierReference"
+const EIdentifier ExprType = "EIdentifier"
 
-type ExprIdentifierReference struct {
-	reference string
+type ExprIdentifier struct {
+	name string
 }
 
-func (e *ExprIdentifierReference) Type() ExprType {
-	return EIdentifierReference
+func (e *ExprIdentifier) Type() ExprType {
+	return EIdentifier
 }
 
-func (e *ExprIdentifierReference) S() string {
-	return e.reference
+func (e *ExprIdentifier) S() string {
+	return e.name
+}
+
+// /////////////////
+// ExprPrivateIdentifier //
+// /////////////////
+const EPrivateIdentifierReference ExprType = "EPrivateIdentifierReference"
+
+type ExprPrivateIdentifier struct {
+	name string
+}
+
+func (e *ExprPrivateIdentifier) Type() ExprType {
+	return EPrivateIdentifierReference
+}
+
+func (e *ExprPrivateIdentifier) S() string {
+	return fmt.Sprintf("#%s", e.name)
 }
 
 // ///////////////
@@ -683,7 +700,7 @@ func (p *Parser) parseImportCall() (Node, error) {
 // | '(' ArgumentList? ')' CallExpressionRest
 // | '[' Expression ']' CallExpressionRest
 // | '.' IdentifierName CallExpressionRest
-// | TemplateLiteral CallExpressionRest (TODO)
+// | TemplateLiteral CallExpressionRest
 // | '.' PrivateIdentifier CallExpressionRest
 // | ε
 func (p *Parser) parseCallExpr() (Node, error) {
@@ -792,8 +809,8 @@ restLoop:
 			if afterPeriod.Type == l.TIdentifier {
 				exprCall = &ExprMemberAccess{
 					object: exprCall,
-					property: &ExprIdentifierReference{
-						reference: afterPeriod.Lexeme,
+					property: &ExprIdentifier{
+						name: afterPeriod.Lexeme,
 					},
 				}
 				p.Next() // consume identifier
@@ -942,7 +959,7 @@ loop:
 //
 // MemberExpression ::=
 // PrimaryExpression
-// | MemberExpression | (. IdentifierName | [ Expression ] | TemplateLiteral | . PrivateIdentifier)
+// | MemberExpression | ('.' IdentifierName | '[' Expression ']' | TemplateLiteral | '.' PrivateIdentifier)
 // | SuperProperty
 // | MetaProperty
 // | 'new' MemberExpression Arguments
@@ -955,6 +972,7 @@ loop:
 // MemberExpression ::=
 // | MemberExpressionRest ('[' Expr ']' MemberExpressionRest)*
 // | MemberExpressionRest ('.' IdentifierName MemberExpression')*
+// | MemberExpressionRest ('.' PrivateIdentifier)* (TODO)
 // | MemberExpressionRest (TemplateLiteral MemberExpression')* (TODO)
 // | 'new' MemberExpression Arguments
 //
@@ -967,7 +985,8 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 		err        error
 	)
 
-	// MemberExpression ::= MemberExpression'
+	// MemberExpressionRest ::=
+	// PrimaryExpression | SuperProperty | MetaProperty
 	exprMember, err = p.parsePrimaryExpr()
 	if err != nil {
 		switch p.Peek().Type {
@@ -983,8 +1002,8 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 				p.Next() // consume 'target'
 				return &ExprMetaProperty{
 					meta: MakeLiteralExpr(l.TNew),
-					property: &ExprIdentifierReference{
-						reference: "target",
+					property: &ExprIdentifier{
+						name: "target",
 					},
 				}, nil
 			}
@@ -997,8 +1016,8 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 				p.Next() // consume 'meta'
 				return &ExprMetaProperty{
 					meta: MakeLiteralExpr(l.TImport),
-					property: &ExprIdentifierReference{
-						reference: "meta",
+					property: &ExprIdentifier{
+						name: "meta",
 					},
 				}, nil
 			}
@@ -1009,8 +1028,8 @@ func (p *Parser) parseMemberExpr() (Node, error) {
 	}
 
 	// MemberExpression ::=
-	// | MemberExpression' ([ Expr ] MemberExpression')*
-	// | MemberExpression' (. IdentifierName MemberExpression')*
+	// | ('[' Expr ']' MemberExpressionRest)*
+	// | ('.' IdentifierName MemberExpressionRest)*
 	lastCursor := p.cursor
 loop:
 	for {
@@ -1020,18 +1039,34 @@ loop:
 			// MemberExpression ::= ('.' IdentifierName MemberExpression')*
 			p.Next() // consume period
 			afterPeriod := p.Peek()
-			if afterPeriod.Type == l.TIdentifier {
-				// match = true
+			switch afterPeriod.Type {
+			case l.TNumberSign:
+				p.Next() // consume '#'
+				if p.Peek().Type == l.TIdentifier {
+					// match = true
+					exprMember = &ExprMemberAccess{
+						object: exprMember,
+						property: &ExprPrivateIdentifier{
+							name: p.Peek().Lexeme,
+						},
+					}
+					p.Next() // consume identifier
+				} else {
+					return nil, fmt.Errorf("expected identifier after dot")
+				}
+
+			case l.TIdentifier:
 				exprMember = &ExprMemberAccess{
 					object: exprMember,
-					property: &ExprIdentifierReference{
-						reference: afterPeriod.Lexeme,
+					property: &ExprIdentifier{
+						name: afterPeriod.Lexeme,
 					},
 				}
 				p.Next() // consume identifier
-			} else {
+			default:
 				return nil, fmt.Errorf("expected identifier after dot")
 			}
+
 		case l.TLeftBracket:
 			// MemberExpression ::= ('[' Expr ']' MemberExpression')*
 			p.Next()                                    // consume left bracket
@@ -1077,8 +1112,8 @@ func (p *Parser) parsePrimaryExpr() (Node, error) {
 
 	switch token.Type {
 	case l.TIdentifier:
-		primaryExpr = &ExprIdentifierReference{
-			reference: token.Lexeme,
+		primaryExpr = &ExprIdentifier{
+			name: token.Lexeme,
 		}
 	case l.TNumericLiteral:
 		if num, err := strconv.ParseFloat(token.Lexeme, 64); err == nil {
