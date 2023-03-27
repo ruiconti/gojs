@@ -111,6 +111,17 @@ func idExpr(name string) *ExprIdentifier {
 		name: name,
 	}
 }
+func spreadExpr(expr Node) *SpreadElement {
+	return &SpreadElement{
+		argument: expr,
+	}
+}
+
+func idPrivateExpr(name string) *ExprPrivateIdentifier {
+	return &ExprPrivateIdentifier{
+		name: name,
+	}
+}
 
 func intExpr(n int32) *ExprLiteral[float64] {
 	return &ExprLiteral[float64]{
@@ -442,8 +453,7 @@ func TestUnaryOperators(t *testing.T) {
 	})
 }
 
-func TestMemberCallExpressions(t *testing.T) {
-
+func TestMemberAndNewExpressions(t *testing.T) {
 	t.Run("primary expression", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `foo`
@@ -579,7 +589,7 @@ func TestMemberCallExpressions(t *testing.T) {
 		}
 		AssertExprEqual(t, logger, got, exp)
 	})
-	t.Run("member expressions", func(t *testing.T) {
+	t.Run("member expressions combined", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `foo.bar[baz][foo2].bar2`
 		got := Parse(logger, src)
@@ -654,6 +664,37 @@ func TestMemberCallExpressions(t *testing.T) {
 		AssertExprEqual(t, logger, got, exp)
 	})
 
+	t.Run("member expression with optional chaining", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		srcs := []string{
+			`foo?.bar`,
+			`foo?.#bar`,
+			`foo?.[bar]`,
+			`foo?.['bar']`,
+		}
+		expectedProps := []Node{
+			idExpr("bar"),
+			idPrivateExpr("bar"),
+			idExpr("bar"),
+			stringExpr("'bar'"),
+		}
+
+		for i := 0; i < len(srcs); i++ {
+			src, expectedProp := srcs[i], expectedProps[i]
+			exp := &ExprRootNode{
+				children: []Node{
+					&ExprMemberAccess{
+						object:   idExpr("foo"),
+						property: expectedProp,
+						optional: true,
+					},
+				},
+			}
+			got := Parse(logger, src)
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
+
 }
 
 func TestCallExpression(t *testing.T) {
@@ -667,6 +708,23 @@ func TestCallExpression(t *testing.T) {
 					callee: idExpr("foo"),
 					arguments: []Node{
 						idExpr("bar"),
+					},
+				},
+			},
+		}
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("call expression with spread", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo(bar, baz, ...qux)`
+		got := Parse(logger, src)
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprCall{
+					callee: idExpr("foo"),
+					arguments: []Node{
+						idExpr("bar"), idExpr("baz"), spreadExpr(idExpr("qux")),
 					},
 				},
 			},
@@ -717,7 +775,7 @@ func TestCallExpression(t *testing.T) {
 		exp := &ExprRootNode{
 			children: []Node{
 				&ExprCall{
-					callee: &ExprSuperProp{
+					callee: &ExprMemberAccess{
 						object:   idExpr("super"),
 						property: idExpr("foo"),
 					},
@@ -808,6 +866,79 @@ func TestCallExpression(t *testing.T) {
 		}
 		AssertExprEqual(t, logger, got, exp)
 	})
+
+	t.Run("call expression with optional chaining", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		srcs := []string{
+			`foo?.(bar)`,
+			`foo?.(a)?.(b)`,
+			`foo?.()(bar)?.(baz)`,
+		}
+		expectedNodes := []Node{
+			&ExprCall{
+				callee:    idExpr("foo"),
+				arguments: []Node{idExpr("bar")},
+				optional:  true,
+			},
+			&ExprCall{
+				callee: &ExprCall{
+					callee:    idExpr("foo"),
+					arguments: []Node{idExpr("a")},
+					optional:  true,
+				},
+				arguments: []Node{idExpr("b")},
+				optional:  true,
+			},
+			&ExprCall{
+				callee: &ExprCall{
+					callee: &ExprCall{
+						callee:    idExpr("foo"),
+						arguments: []Node{},
+						optional:  true,
+					},
+					arguments: []Node{idExpr("bar")},
+					optional:  false,
+				},
+				arguments: []Node{idExpr("baz")},
+				optional:  true,
+			},
+		}
+
+		for i := 0; i < len(srcs); i++ {
+			src, expectedNode := srcs[i], expectedNodes[i]
+			exp := &ExprRootNode{
+				children: []Node{expectedNode},
+			}
+			got := Parse(logger, src)
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
+
+	t.Run("call expression with optional chaining and private identifier", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `foo?.#bar(a, b)?.c`
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprMemberAccess{
+					property: idExpr("c"),
+					optional: true,
+					object: &ExprCall{
+						callee: &ExprMemberAccess{
+							object:   idExpr("foo"),
+							optional: true,
+							property: &ExprPrivateIdentifier{
+								name: "bar",
+							},
+						},
+						arguments: []Node{idExpr("a"), idExpr("b")},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+
 }
 
 // //////////
