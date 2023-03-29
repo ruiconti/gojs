@@ -25,7 +25,7 @@ func (s *Lexer) MatchSequence(chars ...rune) bool {
 }
 
 func isPunctuation(r rune) bool {
-	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == '~'
+	return r == '!' || r == '.' || r == ',' || r == '>' || r == '<' || r == '=' || r == '+' || r == '-' || r == '*' || r == '/' || r == '%' || r == '&' || r == '|' || r == '^' || r == '(' || r == ')' || r == '[' || r == ']' || r == '{' || r == '}' || r == ';' || r == ':' || r == '?' || r == '~' || r == '#'
 }
 
 // Punctuators
@@ -69,6 +69,8 @@ func (s *Lexer) matchPunctuation(char rune) (TokenType, uint) {
 		return TTilde, 1
 	case '%':
 		return TPercent, 1
+	case '#':
+		return TNumberSign, 1
 	case '>':
 		if s.MatchSequence('>', '>', '=') {
 			// >>>= is unsigned right shift assign

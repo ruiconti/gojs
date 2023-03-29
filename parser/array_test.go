@@ -8,10 +8,21 @@ import (
 )
 
 func TestParseArray_Simple(t *testing.T) {
-	t.Skip()
+	t.Run("empty array", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[]`
+		expected := &ExprRootNode{
+			children: []Node{
+				&ExprArray{},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, expected)
+	})
 	t.Run("full of elisions", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[,,, ,,   , ]`
+		// src := `[null,null,null,null,null,null,]`
 		expected := &ExprRootNode{
 			children: []Node{
 				&ExprArray{
@@ -39,14 +50,13 @@ func TestParseArray_Simple(t *testing.T) {
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "1"}},
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "2"}},
 						ExprLitTrue,
-						&ExprIdentifierReference{
-							reference: `\u3340xa`,
+						&ExprIdentifier{
+							name: `\u3340xa`,
 						},
 						ExprLitUndefined,
 						ExprLitNull,
 						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_SingleQuote, Literal: "'foo'"}},
 						&ExprLiteral[string]{l.Token{Type: l.TStringLiteral_DoubleQuote, Literal: `"bar"`}},
-						ExprLitNull,
 					},
 				},
 			},
@@ -134,16 +144,103 @@ func TestParseArrayElementList_Assignment_AsyncArrowFunc(t *testing.T) {
 }
 
 func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
-	t.Skip()
-	// src := `[, new Map(), new this, new t.p, new t.p(), a[b], a[b[c[d[e]]]], () => import(a, b[c[d]]), super(a,...b,)]`
-	// expected := ExprRootNode{}
-	// got := Parse(src)
-	// CompareRootChildren(
-	// 	t,
-	// 	src,
-	// 	(got.children[0]).(*ExprArray).elements,
-	// 	(expected.children[0]).(*ExprArray).elements,
-	// )
+	t.Run("new class", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[, new Map([1, 2]), ]`
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprArray{
+					elements: []Node{
+						ExprLitNull,
+						&ExprNew{
+							callee: &ExprIdentifier{
+								name: "Map",
+							},
+							arguments: []Node{
+								&ExprArray{
+									elements: []Node{idExpr("1"), idExpr("2")},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+	t.Run("new this", func(t *testing.T) {
+		// logger := internal.NewSimpleLogger(internal.ModeDebug)
+		// src := `[new this]`
+	})
+	t.Run("new call expr and member access", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[new t.p, new t.p(...x), a[b[c[d[e]]]]`
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprArray{
+					elements: []Node{
+						&ExprNew{
+							callee: &ExprMemberAccess{
+								object:   idExpr("t"),
+								property: idExpr("p"),
+							},
+						},
+						&ExprNew{
+							callee: &ExprMemberAccess{
+								object:   idExpr("t"),
+								property: idExpr("p"),
+							},
+							arguments: []Node{
+								&SpreadElement{argument: idExpr("x")},
+							},
+						},
+						&ExprMemberAccess{
+							object: idExpr("a"),
+							property: &ExprMemberAccess{
+								object: idExpr("b"),
+								property: &ExprMemberAccess{
+									object: idExpr("c"),
+									property: &ExprMemberAccess{
+										object:   idExpr("d"),
+										property: idExpr("e"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+	t.Run("import and super expressions", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `[import(a), super(a,...b,)]`
+		exp := &ExprRootNode{
+			children: []Node{
+				&ExprArray{
+					elements: []Node{
+						&ExprImportCall{
+							source: idExpr("a"),
+						},
+						&ExprCall{
+							callee: MakeLiteralExpr(l.TSuper),
+							arguments: []Node{
+								idExpr("a"),
+								&SpreadElement{argument: idExpr("b")},
+							},
+						},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+
 }
 
 func TestParseArrayElementList_Assignment_LeftHS_NewExp2(t *testing.T) {

@@ -2,17 +2,12 @@ BINARY_NAME = gojs
 PACKAGE = github.com/ruiconti/gojs
 PACKAGE_LEXER = $(PACKAGE)/lexer
 PACKAGE_PARSER = $(PACKAGE)/parser
-BUILD_FLAGS = -race -trimpath
+BUILD_FLAGS =-race -trimpath
 ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-
-generate_png = go run github.com/ruiconti/gojs/tools -i $< -o $(dir $<)$(basename $(notdir $<)).png
-
-%.png: %.go
-	$(generate_png)
 
 build:
 	@echo "Building the binary..."
-	@go $BUILD_FLAGS build -o $(BINARY_NAME) $(PACKAGE)
+	go build $(BUILD_FLAGS) -o $(BINARY_NAME) $(PACKAGE)
 
 test:
 	@echo "Running tests..."

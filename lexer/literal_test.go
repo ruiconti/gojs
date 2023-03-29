@@ -363,8 +363,10 @@ func TestIdentifier(t *testing.T) {
 }
 
 func TestIdentifier_Keywords(t *testing.T) {
-	src := `break case catch class const continue debugger default delete do else enum export extends false finally for function if import in let new null return super switch this throw true try typeof undefined var void while with yield`
+	src := `await async break case catch class const continue debugger default delete do else enum export extends false finally for function if import in let new null return super switch this throw true try typeof undefined var void while with yield`
 	expected := []Token{
+		{Type: TAwait, Lexeme: `await`, Line: 0, Column: 0},
+		{Type: TAsync, Lexeme: `async`, Line: 0, Column: 0},
 		{Type: TBreak, Lexeme: `break`, Line: 0, Column: 0},
 		{Type: TCase, Lexeme: `case`, Line: 0, Column: 0},
 		{Type: TCatch, Lexeme: `catch`, Line: 0, Column: 0},

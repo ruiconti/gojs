@@ -59,6 +59,7 @@ const (
 
 	// Other
 	TAnd
+	TAsync
 	TAndAssign
 	TArrow
 	TAssign
@@ -90,6 +91,7 @@ const (
 	TFunction
 	TGreaterThan
 	TGreaterThanEqual
+	TNumberSign
 	TIf
 	TImport
 	TIn
@@ -166,6 +168,7 @@ var LiteralNames = map[TokenType]string{
 }
 
 var ReservedWordNames = map[TokenType]string{
+	TAsync:      "async",
 	TTrue:       "true",
 	TFalse:      "false",
 	TAwait:      "await",
@@ -230,6 +233,7 @@ var PunctuationNames = map[TokenType]string{
 	TPlus:                     "+",
 	TMinus:                    "-",
 	TStar:                     "*",
+	TNumberSign:               "#",
 	TPercent:                  "%",
 	TPlusPlus:                 "++",
 	TMinusMinus:               "--",
