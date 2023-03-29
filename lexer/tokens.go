@@ -59,6 +59,7 @@ const (
 
 	// Other
 	TAnd
+	TAsync
 	TAndAssign
 	TArrow
 	TAssign
@@ -167,6 +168,7 @@ var LiteralNames = map[TokenType]string{
 }
 
 var ReservedWordNames = map[TokenType]string{
+	TAsync:      "async",
 	TTrue:       "true",
 	TFalse:      "false",
 	TAwait:      "await",

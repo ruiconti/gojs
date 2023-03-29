@@ -94,6 +94,7 @@ var (
 	ExprLitUndefined = MakeLiteralExpr(l.TUndefined)
 	ExprLitTrue      = MakeLiteralExpr(l.TTrue)
 	ExprLitFalse     = MakeLiteralExpr(l.TFalse)
+	ExprLitThis      = MakeLiteralExpr(l.TThis)
 )
 
 type Literal interface {
@@ -351,6 +352,16 @@ func (p *Parser) parseExpr() (Node, error) {
 	return p.parseAssignExpr()
 }
 
+// AssignmentExpression :
+// | ConditionalExpression
+// | [+Yield] YieldExpression
+// | ArrowFunction
+// | AsyncArrowFunction
+// | LeftHandSideExpression '=' AssignmentExpression
+// | LeftHandSideExpression AssignmentOperator AssignmentExpression
+// | LeftHandSideExpression &&= AssignmentExpression
+// | LeftHandSideExpression ||= AssignmentExpression
+// | LeftHandSideExpression ??= AssignmentExpression
 func (p *Parser) parseAssignExpr() (Node, error) {
 	return p.parseCondExpr()
 }
@@ -1099,10 +1110,10 @@ loop:
 }
 
 // PrimaryExpression ::=
-// | this (TODO)
+// | this
 // | IdentifierReference
 // | Literal
-// | ArrayLiteral (TODO)
+// | ArrayLiteral
 // | ObjectLiteral (TODO)
 // | FunctionExpression (TODO)
 // | ClassExpression (TODO)
@@ -1128,6 +1139,12 @@ func (p *Parser) parsePrimaryExpr() (Node, error) {
 	}
 	p.restoreCheckpoint()
 
+	p.saveCheckpoint()
+	object, err := p.parseObjectInitializer()
+	if err == nil {
+		return object, nil
+	}
+	p.restoreCheckpoint()
 	return nil, fmt.Errorf("rejected on primaryExpression")
 }
 
@@ -1165,11 +1182,12 @@ func (p *Parser) parseLiteralAndIdentifier() (Node, error) {
 		primaryExpr = ExprLitNull
 	case l.TUndefined:
 		primaryExpr = ExprLitUndefined
+	case l.TThis:
+		primaryExpr = ExprLitThis
 	default:
 		return nil, fmt.Errorf("primaryExpr rejected")
 	}
 
 	p.Next() // consume token
 	return primaryExpr, nil
-
 }

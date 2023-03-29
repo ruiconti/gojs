@@ -8,6 +8,57 @@ import (
 	l "github.com/ruiconti/gojs/lexer"
 )
 
+func idExpr(name string) *ExprIdentifier {
+	return &ExprIdentifier{
+		name: name,
+	}
+}
+func spreadExpr(expr Node) *SpreadElement {
+	return &SpreadElement{
+		argument: expr,
+	}
+}
+
+func idPrivateExpr(name string) *ExprPrivateIdentifier {
+	return &ExprPrivateIdentifier{
+		name: name,
+	}
+}
+
+func intExpr(n int32) *ExprLiteral[float64] {
+	return &ExprLiteral[float64]{
+		tok: l.Token{
+			Literal: float64(n),
+			Lexeme:  fmt.Sprintf("%d", n),
+			Type:    l.TNumericLiteral,
+		},
+	}
+}
+
+func binExpr(left, right Node, op l.TokenType) *ExprBinaryOp {
+	return &ExprBinaryOp{
+		left:     left,
+		right:    right,
+		operator: op.Token(),
+	}
+}
+
+func stringExpr(s string) *ExprLiteral[string] {
+	var st l.TokenType
+	if s[0] == '"' {
+		st = l.TStringLiteral_DoubleQuote
+	} else {
+		st = l.TStringLiteral_SingleQuote
+	}
+	return &ExprLiteral[string]{
+		tok: l.Token{
+			Literal: s,
+			Lexeme:  s,
+			Type:    st,
+		},
+	}
+}
+
 // /////////////////////
 // PrimaryExpression //
 // /////////////////////
@@ -80,57 +131,6 @@ func TestExprIdentifierReference(t *testing.T) {
 	}
 
 	AssertExprEqual(t, logger, got, exp)
-}
-
-func binExpr(left, right Node, op l.TokenType) *ExprBinaryOp {
-	return &ExprBinaryOp{
-		left:     left,
-		right:    right,
-		operator: op.Token(),
-	}
-}
-
-func stringExpr(s string) *ExprLiteral[string] {
-	var st l.TokenType
-	if s[0] == '"' {
-		st = l.TStringLiteral_DoubleQuote
-	} else {
-		st = l.TStringLiteral_SingleQuote
-	}
-	return &ExprLiteral[string]{
-		tok: l.Token{
-			Literal: s,
-			Lexeme:  s,
-			Type:    st,
-		},
-	}
-}
-
-func idExpr(name string) *ExprIdentifier {
-	return &ExprIdentifier{
-		name: name,
-	}
-}
-func spreadExpr(expr Node) *SpreadElement {
-	return &SpreadElement{
-		argument: expr,
-	}
-}
-
-func idPrivateExpr(name string) *ExprPrivateIdentifier {
-	return &ExprPrivateIdentifier{
-		name: name,
-	}
-}
-
-func intExpr(n int32) *ExprLiteral[float64] {
-	return &ExprLiteral[float64]{
-		tok: l.Token{
-			Literal: float64(n),
-			Lexeme:  fmt.Sprintf("%d", n),
-			Type:    l.TNumericLiteral,
-		},
-	}
 }
 
 // //////////////

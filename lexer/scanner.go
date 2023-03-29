@@ -45,8 +45,8 @@ type Lexer struct {
 	errors []error
 
 	// TODO: implement proper positioning
-	line   int
-	column int
+	line   uint
+	column uint
 }
 
 func NewLexer(src string, logger *gojs.SimpleLogger) *Lexer {
@@ -62,6 +62,8 @@ func NewLexer(src string, logger *gojs.SimpleLogger) *Lexer {
 		srcCursorOOB:  false,
 		srcEnd:        len(src) - 1,
 		tokens:        []Token{},
+		line:          0,
+		column:        0,
 	}
 }
 
@@ -169,6 +171,10 @@ func (s *Lexer) Scan() Token {
 	case isPunctuation(ch):
 		token = s.scanPunctuation()
 	case isWhitespace(ch):
+		token = Token{Type: TWhitespace, Lexeme: " ", Literal: " "}
+	case isNewline(ch):
+		s.line++
+		s.Next()
 		token = Token{Type: TWhitespace, Lexeme: " ", Literal: " "}
 	default:
 		token = TokenUnknown
