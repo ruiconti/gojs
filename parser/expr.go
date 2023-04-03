@@ -11,44 +11,8 @@ import (
 type ExprType string
 
 const (
-	ENodeRoot ExprType = "ENodeRoot"
-	EElision  ExprType = "EElision"
+	EElision ExprType = "EElision"
 )
-
-// /////////////////////////////
-// RootNode: Artificial node //
-// /////////////////////////////
-type ExprRootNode struct {
-	children []Node
-}
-
-func (e *ExprRootNode) Type() ExprType {
-	return ENodeRoot
-}
-
-func (e *ExprRootNode) S() string {
-	var s strings.Builder
-	s.Write([]byte("(root"))
-	for i, child := range e.children {
-		if i == 0 {
-			// first whitespace
-			s.Write([]byte(" "))
-		}
-
-		if child == nil {
-			panic(fmt.Sprintf("panic: nil child at index %d/%d. children: %+v", i, len(e.children)-1, s.String()))
-		}
-
-		s.Write([]byte(child.S()))
-		if i < len(e.children)-1 {
-			// subsequent whitespace
-			s.Write([]byte(" "))
-		}
-
-	}
-	s.Write([]byte(")"))
-	return s.String()
-}
 
 // /////////////////
 // ExprIdentifier //
@@ -161,7 +125,7 @@ var UnaryOperators = []l.TokenType{
 }
 
 type ExprUnaryOp struct {
-	operand  Node
+	operand  Expr
 	operator l.Token
 }
 
@@ -190,8 +154,8 @@ var UpdateOperators = []l.TokenType{
 const EBinaryOp ExprType = "ExprBinaryOp"
 
 type ExprBinaryOp struct {
-	left     Node
-	right    Node
+	left     Expr
+	right    Expr
 	operator l.Token
 }
 
@@ -209,8 +173,8 @@ func (e *ExprBinaryOp) S() string {
 const ENew ExprType = "ExprNew"
 
 type ExprNew struct {
-	callee    Node
-	arguments []Node
+	callee    Expr
+	arguments []Expr
 }
 
 func (e *ExprNew) Type() ExprType {
@@ -227,8 +191,8 @@ func (e *ExprNew) S() string {
 const EMemberAccess ExprType = "ExprMemberAccess"
 
 type ExprMemberAccess struct {
-	object   Node
-	property Node
+	object   Expr
+	property Expr
 	optional bool
 }
 
@@ -255,8 +219,8 @@ func (e *ExprMemberAccess) S() string {
 const EMetaProperty ExprType = "ExprMetaProperty"
 
 type ExprMetaProperty struct {
-	meta     Node
-	property Node
+	meta     Expr
+	property Expr
 }
 
 func (e *ExprMetaProperty) Type() ExprType {
@@ -276,8 +240,8 @@ func (e *ExprMetaProperty) S() string {
 const ECall ExprType = "ExprCall"
 
 type ExprCall struct {
-	callee    Node
-	arguments []Node
+	callee    Expr
+	arguments []Expr
 	optional  bool
 }
 
@@ -311,7 +275,7 @@ func (e *ExprCall) S() string {
 const NSpreadElement ExprType = "SpreadElement"
 
 type SpreadElement struct {
-	argument Node
+	argument Expr
 }
 
 func (e *SpreadElement) Type() ExprType {
@@ -331,7 +295,7 @@ func (e *SpreadElement) S() string {
 const EImportCall ExprType = "ExprImportCall"
 
 type ExprImportCall struct {
-	source Node
+	source Expr
 }
 
 func (e *ExprImportCall) Type() ExprType {
@@ -348,7 +312,7 @@ func (e *ExprImportCall) S() string {
 // //////////////////////////
 // Expressions productions //
 // //////////////////////////
-func (p *Parser) parseExpr() (Node, error) {
+func (p *Parser) parseExpr() (Expr, error) {
 	return p.parseAssignExpr()
 }
 
@@ -362,11 +326,11 @@ func (p *Parser) parseExpr() (Node, error) {
 // | LeftHandSideExpression &&= AssignmentExpression
 // | LeftHandSideExpression ||= AssignmentExpression
 // | LeftHandSideExpression ??= AssignmentExpression
-func (p *Parser) parseAssignExpr() (Node, error) {
+func (p *Parser) parseAssignExpr() (Expr, error) {
 	return p.parseCondExpr()
 }
 
-func (p *Parser) parseCondExpr() (Node, error) {
+func (p *Parser) parseCondExpr() (Expr, error) {
 	return p.parseLogOrExpr()
 }
 
@@ -391,11 +355,11 @@ func newSet[C comparable](items ...C) map[C]struct{} {
 //	Expr ::= HigherExpr (operator HigherExpr)*
 func (p *Parser) parseBinaryOperators(
 	operators []l.TokenType,
-	higherExprLeft func() (Node, error),
-	higherExprRight func() (Node, error),
-) (Node, error) {
+	higherExprLeft func() (Expr, error),
+	higherExprRight func() (Expr, error),
+) (Expr, error) {
 	var (
-		left  Node
+		left  Expr
 		err   error
 		opSet = newSet(operators...)
 	)
@@ -430,7 +394,7 @@ func (p *Parser) parseBinaryOperators(
 	return left, nil
 }
 
-func (p *Parser) parseLogOrExpr() (Node, error) {
+func (p *Parser) parseLogOrExpr() (Expr, error) {
 	p.Log("parseLogOrExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TLogicalOr},
@@ -439,7 +403,7 @@ func (p *Parser) parseLogOrExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseAndExpr() (Node, error) {
+func (p *Parser) parseAndExpr() (Expr, error) {
 	p.Log("parseAndExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TLogicalAnd},
@@ -448,7 +412,7 @@ func (p *Parser) parseAndExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseBitOrExpr() (Node, error) {
+func (p *Parser) parseBitOrExpr() (Expr, error) {
 	p.Log("parseBitOrExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TOr},
@@ -457,7 +421,7 @@ func (p *Parser) parseBitOrExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseBitXorExpr() (Node, error) {
+func (p *Parser) parseBitXorExpr() (Expr, error) {
 	p.Log("parseBitXorExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TXor},
@@ -466,7 +430,7 @@ func (p *Parser) parseBitXorExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseBitAndExpr() (Node, error) {
+func (p *Parser) parseBitAndExpr() (Expr, error) {
 	p.Log("parseBitAndExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TAnd},
@@ -475,7 +439,7 @@ func (p *Parser) parseBitAndExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseEqualityExpr() (Node, error) {
+func (p *Parser) parseEqualityExpr() (Expr, error) {
 	p.Log("parseEqualityExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TEqual, l.TNotEqual, l.TStrictEqual, l.TStrictNotEqual},
@@ -484,7 +448,7 @@ func (p *Parser) parseEqualityExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseRelationalExpr() (Node, error) {
+func (p *Parser) parseRelationalExpr() (Expr, error) {
 	p.Log("parseRelationalExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TGreaterThan, l.TGreaterThanEqual, l.TLessThan, l.TLessThanEqual, l.TInstanceof, l.TIn},
@@ -493,7 +457,7 @@ func (p *Parser) parseRelationalExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseShiftExpr() (Node, error) {
+func (p *Parser) parseShiftExpr() (Expr, error) {
 	p.Log("parseShiftExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TLeftShift, l.TRightShift, l.TUnsignedRightShift},
@@ -502,7 +466,7 @@ func (p *Parser) parseShiftExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseAdditiveExpr() (Node, error) {
+func (p *Parser) parseAdditiveExpr() (Expr, error) {
 	p.Log("parseAdditiveExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TPlus, l.TMinus},
@@ -511,7 +475,7 @@ func (p *Parser) parseAdditiveExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseMultiplicativeExpr() (Node, error) {
+func (p *Parser) parseMultiplicativeExpr() (Expr, error) {
 	p.Log("parseMultiplicativeExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TStar, l.TSlash, l.TPercent},
@@ -520,7 +484,7 @@ func (p *Parser) parseMultiplicativeExpr() (Node, error) {
 	)
 }
 
-func (p *Parser) parseExponentialExpr() (Node, error) {
+func (p *Parser) parseExponentialExpr() (Expr, error) {
 	p.Log("parseExponentialExpr")
 	return p.parseBinaryOperators(
 		[]l.TokenType{l.TStarStar},
@@ -535,10 +499,10 @@ func (p *Parser) parseExponentialExpr() (Node, error) {
 // | AwaitExpression (TODO)
 //
 // UnaryOp ::= delete | void | typeof | + | - | ~ | !
-func (p *Parser) parseUnaryOperator() (Node, error) {
+func (p *Parser) parseUnaryOperator() (Expr, error) {
 	p.Log("parseUnaryOperator")
 	var (
-		exprUnary, exprUpdate Node
+		exprUnary, exprUpdate Expr
 		err                   error
 		unaryOpSet            = newSet(UnaryOperators...)
 	)
@@ -575,10 +539,10 @@ func (p *Parser) parseUnaryOperator() (Node, error) {
 // UpdateExpression ::=
 // | LeftHandSideExpression (++ | --)?
 // | (++ | --) UnaryExpression
-func (p *Parser) parseUpdateExpr() (Node, error) {
+func (p *Parser) parseUpdateExpr() (Expr, error) {
 	p.Log("parseUpdateExpr")
 	var (
-		exprUpdate Node
+		exprUpdate Expr
 		err        error
 		unaryOpSet = newSet(UpdateOperators...)
 		match      bool
@@ -636,10 +600,10 @@ func (p *Parser) parseUpdateExpr() (Node, error) {
 // NewExpression
 // | CallExpression
 // | OptionalExpression
-func (p *Parser) parseLeftHandSideExpr() (Node, error) {
+func (p *Parser) parseLeftHandSideExpr() (Expr, error) {
 	p.Log("parseLeftHandSideExpr")
 	var (
-		expr Node
+		expr Expr
 		err  error
 	)
 
@@ -700,7 +664,7 @@ func (p *Parser) parseOptionalExpression() (bool, error) {
 	return false, nil
 }
 
-func (p *Parser) parseImportCall() (Node, error) {
+func (p *Parser) parseImportCall() (Expr, error) {
 	if p.Peek().Type == l.TImport {
 		p.Next() // consume 'import'
 		if p.Peek().Type != l.TLeftParen {
@@ -733,11 +697,11 @@ func (p *Parser) parseImportCall() (Node, error) {
 // '...' AssignmentExpression
 // ArgumentList ',' AssignmentExpression
 // ArgumentList ',' '...' AssignmentExpression
-func (p *Parser) parseArguments() ([]Node, error) {
+func (p *Parser) parseArguments() ([]Expr, error) {
 	p.Log("parseArguments")
 	var (
 		err       error
-		arguments []Node
+		arguments []Expr
 	)
 	// simplifying the expression to:
 	// Arguments ::= '(' ArgumentList? ')' ExpressionRest
@@ -747,7 +711,7 @@ func (p *Parser) parseArguments() ([]Node, error) {
 	//
 	// ArgumentListRest ::= (',' '...'? AssignmentExpression)*
 	if p.Peek().Type == l.TLeftParen {
-		var exprAssign Node
+		var exprAssign Expr
 
 		p.Next() // consume '('
 		switch p.Peek().Type {
@@ -762,7 +726,7 @@ func (p *Parser) parseArguments() ([]Node, error) {
 		case l.TRightParen:
 			// fn()
 			p.Next() // consume ')'
-			return []Node{}, nil
+			return []Expr{}, nil
 
 		default:
 			// fn(a
@@ -813,10 +777,10 @@ func (p *Parser) parseArguments() ([]Node, error) {
 // | '.' (IdentifierName | PrivateIdentifier)
 // | '[' Expr ']'
 //
-// it has a different behavior; instead of returning the node, it modifies the
-// node passed as argument, as this is a production that often appears within
+// it has a different behavior; instead of returning the Expr, it modifies the
+// Expr passed as argument, as this is a production that often appears within
 // recursive productions.
-func (p *Parser) parseMemberAccess() (Node, error) {
+func (p *Parser) parseMemberAccess() (Expr, error) {
 	p.Log("parseMemberAccess")
 
 	switch p.Peek().Type {
@@ -890,10 +854,10 @@ func (p *Parser) parseMemberAccess() (Node, error) {
 // | TemplateLiteral CallExpressionRest
 // | '.' PrivateIdentifier CallExpressionRest
 // | ε
-func (p *Parser) parseCallExpr() (Node, error) {
+func (p *Parser) parseCallExpr() (Expr, error) {
 	p.Log("parseCallExpr")
 	var (
-		exprCall Node
+		exprCall Expr
 		err      error
 	)
 
@@ -962,10 +926,10 @@ restLoop:
 // parseLeftHandSideExpr parses the following grammar:
 //
 // NewExpression ::= MemberExpression | 'new' NewExpression
-func (p *Parser) parseNewExpr() (Node, error) {
+func (p *Parser) parseNewExpr() (Expr, error) {
 	p.Log("parseNewExpr")
 	var (
-		exprNew Node
+		exprNew Expr
 		err     error
 	)
 
@@ -1036,10 +1000,10 @@ loop:
 //
 // MemberExpressionRest ::=
 // PrimaryExpression | SuperProperty | MetaProperty | new MemberExpression Arguments
-func (p *Parser) parseMemberExpr() (Node, error) {
+func (p *Parser) parseMemberExpr() (Expr, error) {
 	p.Log("parseMemberExpr")
 	var (
-		exprMember Node
+		exprMember Expr
 		err        error
 	)
 
@@ -1123,7 +1087,7 @@ loop:
 // | RegularExpressionLiteral (TODO)
 // | TemplateLiteral (TODO)
 // | CoverParenthesizedExpressionAndArrowParameterList (TODO)
-func (p *Parser) parsePrimaryExpr() (Node, error) {
+func (p *Parser) parsePrimaryExpr() (Expr, error) {
 	p.Log("parsePrimaryExpr")
 	p.saveCheckpoint()
 	literal, err := p.parseLiteralAndIdentifier()
@@ -1148,9 +1112,9 @@ func (p *Parser) parsePrimaryExpr() (Node, error) {
 	return nil, fmt.Errorf("rejected on primaryExpression")
 }
 
-func (p *Parser) parseLiteralAndIdentifier() (Node, error) {
+func (p *Parser) parseLiteralAndIdentifier() (Expr, error) {
 	p.Log("parseLiteral")
-	var primaryExpr Node
+	var primaryExpr Expr
 	token := p.Peek()
 
 	switch token.Type {

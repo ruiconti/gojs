@@ -11,9 +11,36 @@ import (
 var TokenEOF = l.Token{l.TEOF, "EOF", "EOF", 0, 0}
 var TokenBOF = l.Token{l.TEOF, "BOF", "BOF", 0, 0}
 
+// TODO: define clear boundary between Expression, Statement and Declaration
+// through a clear type model
+
 type Node interface {
 	S() string
-	Type() ExprType
+}
+
+type NodeRoot struct {
+	children []Node
+}
+
+func (n *NodeRoot) S() string {
+	var src strings.Builder
+	src.WriteString("(js ")
+	for i, child := range n.children {
+		src.WriteString(child.S())
+		if i < len(n.children)-1 {
+			src.WriteString(" ")
+		}
+	}
+	src.WriteString(")")
+	return src.String()
+}
+
+type Expr interface {
+	S() string
+}
+
+type ExprStmt interface {
+	S() string
 }
 
 type Parser struct {
@@ -113,9 +140,9 @@ func (p *Parser) restoreCheckpoint() {
 	p.checkpoints = p.checkpoints[:lastIdx]
 }
 
-func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
+func Parse(logger *internal.SimpleLogger, src string) Node {
 	var (
-		ast *ExprRootNode
+		ast *NodeRoot
 		err error
 	)
 	lexer := l.NewLexer(src, logger)
@@ -151,7 +178,7 @@ func Parse(logger *internal.SimpleLogger, src string) *ExprRootNode {
 	return ast
 }
 
-func (p *Parser) parseProgram() (*ExprRootNode, error) {
+func (p *Parser) parseProgram() (*NodeRoot, error) {
 	var (
 		statements    []Node
 		lastCursorPos uint32 = 0
@@ -174,15 +201,15 @@ func (p *Parser) parseProgram() (*ExprRootNode, error) {
 			continue
 		}
 
-		node, err := p.parseExpr()
+		stmt, err := p.parseStatement()
 		if err == nil {
-			statements = append(statements, node)
-		} else if node == nil {
+			statements = append(statements, stmt)
+		} else if stmt == nil {
 			panic("boo")
 		} else {
-			return &ExprRootNode{children: statements}, err
+			return &NodeRoot{children: statements}, err
 		}
 		p.guardInfiniteLoop(&lastCursorPos)
 	}
-	return &ExprRootNode{children: statements}, nil
+	return &NodeRoot{children: statements}, nil
 }

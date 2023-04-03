@@ -7,10 +7,10 @@ import (
 	l "github.com/ruiconti/gojs/lexer"
 )
 
-const EArrayLiteral ExprType = "ENodeArray"
+const EArrayLiteral ExprType = "EExprArray"
 
 type ExprArray struct {
-	elements []Node
+	elements []Expr
 }
 
 func (e *ExprArray) Type() ExprType {
@@ -41,7 +41,7 @@ func (e *ExprArray) S() string {
 //
 // ElementList :
 // | (Elision? (AssignmentExpression | SpreadElement))*
-func (p *Parser) parseArrayInitializer() (Node, error) {
+func (p *Parser) parseArrayInitializer() (Expr, error) {
 	var exprArray ExprArray
 	if p.Peek().Type == l.TLeftBracket {
 		p.Next() // consume '['

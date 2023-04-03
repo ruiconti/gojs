@@ -40,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Visit each node in the AST and add it to the graph
+	// Visit each Expr in the AST and add it to the graph
 	visitor := &visitor{graph: graph}
 	ast.Walk(visitor, node)
 
@@ -116,37 +116,37 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	switch node.(type) {
 	case *ast.File:
 	case *ast.ExprStmt:
-		// fmt.Printf("exprstmt: %s\n", encodeNode(node))
+		// fmt.Printf("exprstmt: %s\n", encodeExpr(Expr))
 	case *ast.FuncDecl:
 	case *ast.CallExpr:
-		// fmt.Printf("callexpr: %s\n", encodeNode(node))
+		// fmt.Printf("callexpr: %s\n", encodeExpr(Expr))
 	case *ast.FuncLit:
 	}
 
 	var prevParent string
 	v.nodeCount++
-	// Create a new node for the current AST node
-	if nodeName, ok := encodeNode(node); ok {
-		if err := v.graph.AddNode("G", nodeName, map[string]string{
-			"label": nodeName,
+	// Create a new Node for the current AST Node
+	if ExprName, ok := encodeNode(node); ok {
+		if err := v.graph.AddNode("G", ExprName, map[string]string{
+			"label": ExprName,
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "error adding node: %v\n", err)
+			fmt.Fprintf(os.Stderr, "error adding Expr: %v\n", err)
 			return nil
 		}
 
-		// Connect the new node to its parent
+		// Connect the new Expr to its parent
 		if v.parent != "" {
-			if err := v.graph.AddEdge(v.parent, nodeName, true, nil); err != nil {
+			if err := v.graph.AddEdge(v.parent, ExprName, true, nil); err != nil {
 				fmt.Fprintf(os.Stderr, "error adding edge: %v\n", err)
 				return nil
 			}
 		}
 
-		// Save the new node as the parent for the next node
+		// Save the new Expr as the parent for the next Expr
 		prevParent = v.parent
-		v.parent = nodeName
+		v.parent = ExprName
 
-		// Return a new visitor to visit the children of this node
+		// Return a new visitor to visit the children of this Expr
 	}
 	return &visitor{
 		graph:     v.graph,
@@ -155,7 +155,7 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 	}
 }
 
-func (v *visitor) Leave(node ast.Node) {
-	// Pop the current node off the stack by restoring the parent
+func (v *visitor) Leave(Expr ast.Expr) {
+	// Pop the current Expr off the stack by restoring the parent
 	v.parent = ""
 }
