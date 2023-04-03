@@ -13,8 +13,8 @@ import (
 const EPropertyDefinition ExprType = "EPropertyDefinition"
 
 type PropertyDefinition struct {
-	key       Node
-	value     Node
+	key       Expr
+	value     Expr
 	computed  bool // { [foo]: 1 }
 	method    bool // { foo() {} }
 	shorthand bool // { foo }
@@ -57,8 +57,8 @@ func (e *ExprObject) S() string {
 const EFunction ExprType = "EFunction"
 
 type ExprFunction struct {
-	params []Node
-	body   Node
+	params []Expr
+	body   Expr
 
 	expression bool
 	async      bool
@@ -109,7 +109,7 @@ func (e *ExprFunction) S() string {
 // '[' AssignmentExpression ']'
 //
 // CoverInitializedName : IdentifierReference '=' AssignmentExpression
-func (p *Parser) parseObjectInitializer() (Node, error) {
+func (p *Parser) parseObjectInitializer() (Expr, error) {
 	var exprObject ExprObject
 	if p.Peek().Type == l.TLeftBrace {
 		p.Next() // consume '{'
@@ -153,7 +153,7 @@ func (p *Parser) parsePropertyDefinition() (*PropertyDefinition, error) {
 			if err != nil {
 				return nil, err
 			}
-			// TODO: reduce this to a single node
+			// TODO: reduce this to a single Expr
 			return &PropertyDefinition{key: expr, value: &SpreadElement{argument: expr}}, nil
 		}
 		return nil, err
@@ -192,7 +192,7 @@ func (p *Parser) parsePropertyDefinition() (*PropertyDefinition, error) {
 	return nil, fmt.Errorf("rejected on parsePropertyDefinition")
 }
 
-func (p *Parser) parsePropertyName() (Node, bool /* computed */, error) {
+func (p *Parser) parsePropertyName() (Expr, bool /* computed */, error) {
 	token := p.Peek()
 	switch token.Type {
 	case l.TIdentifier:

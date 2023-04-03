@@ -11,7 +11,7 @@ func TestParseArray_Simple(t *testing.T) {
 	t.Run("empty array", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[]`
-		expected := &ExprRootNode{
+		expected := &NodeRoot{
 			children: []Node{
 				&ExprArray{},
 			},
@@ -23,10 +23,10 @@ func TestParseArray_Simple(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[,,, ,,   , ]`
 		// src := `[null,null,null,null,null,null,]`
-		expected := &ExprRootNode{
+		expected := &NodeRoot{
 			children: []Node{
 				&ExprArray{
-					elements: []Node{
+					elements: []Expr{
 						ExprLitNull,
 						ExprLitNull,
 						ExprLitNull,
@@ -43,10 +43,10 @@ func TestParseArray_Simple(t *testing.T) {
 	t.Run("full of primary expressions", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[1,2,true,\u3340xa,undefined, null,'foo', "bar",]`
-		expected := &ExprRootNode{
+		expected := &NodeRoot{
 			children: []Node{
 				&ExprArray{
-					elements: []Node{
+					elements: []Expr{
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "1"}},
 						&ExprLiteral[float64]{l.Token{Type: l.TNumericLiteral, Literal: "2"}},
 						ExprLitTrue,
@@ -94,7 +94,7 @@ func TestParseArray_Simple(t *testing.T) {
 func TestParseArrayElementList_Assignment_Cond(t *testing.T) {
 	t.Skip()
 	// src := `[, a ? b : c, a ?? b, a?.b ?? c, d !== a ? b : c, a === b ? c : d]`
-	// expected := ExprRootNode{}
+	// expected := NodeRoot{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -107,7 +107,7 @@ func TestParseArrayElementList_Assignment_Cond(t *testing.T) {
 func TestParseArrayElementList_Assignment_Yield(t *testing.T) {
 	t.Skip()
 	// src := `[, yield a]`
-	// expected := ExprRootNode{}
+	// expected := NodeRoot{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -120,7 +120,7 @@ func TestParseArrayElementList_Assignment_Yield(t *testing.T) {
 func TestParseArrayElementList_Assignment_ArrowFunc(t *testing.T) {
 	t.Skip()
 	// src := `[, (a) => ({}), a => {}, ([a,b,{c}]) => c]`
-	// expected := ExprRootNode{}
+	// expected := NodeRoot{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -133,7 +133,7 @@ func TestParseArrayElementList_Assignment_ArrowFunc(t *testing.T) {
 func TestParseArrayElementList_Assignment_AsyncArrowFunc(t *testing.T) {
 	t.Skip()
 	// src := `[, async (a) => ({}), async a => {}, async b => await b]`
-	// expected := ExprRootNode{}
+	// expected := NodeRoot{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -147,18 +147,18 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
 	t.Run("new class", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[, new Map([1, 2]), ]`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprArray{
-					elements: []Node{
+					elements: []Expr{
 						ExprLitNull,
 						&ExprNew{
 							callee: &ExprIdentifier{
 								name: "Map",
 							},
-							arguments: []Node{
+							arguments: []Expr{
 								&ExprArray{
-									elements: []Node{idExpr("1"), idExpr("2")},
+									elements: []Expr{idExpr("1"), idExpr("2")},
 								},
 							},
 						},
@@ -176,10 +176,10 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
 	t.Run("new call expr and member access", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[new t.p, new t.p(...x), a[b[c[d[e]]]]`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprArray{
-					elements: []Node{
+					elements: []Expr{
 						&ExprNew{
 							callee: &ExprMemberAccess{
 								object:   idExpr("t"),
@@ -191,7 +191,7 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
 								object:   idExpr("t"),
 								property: idExpr("p"),
 							},
-							arguments: []Node{
+							arguments: []Expr{
 								&SpreadElement{argument: idExpr("x")},
 							},
 						},
@@ -219,16 +219,16 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
 	t.Run("import and super expressions", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `[import(a), super(a,...b,)]`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprArray{
-					elements: []Node{
+					elements: []Expr{
 						&ExprImportCall{
 							source: idExpr("a"),
 						},
 						&ExprCall{
 							callee: MakeLiteralExpr(l.TSuper),
-							arguments: []Node{
+							arguments: []Expr{
 								idExpr("a"),
 								&SpreadElement{argument: idExpr("b")},
 							},
@@ -246,7 +246,7 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp1(t *testing.T) {
 func TestParseArrayElementList_Assignment_LeftHS_NewExp2(t *testing.T) {
 	t.Skip()
 	// src := `[, new Map() = 1, new this = 3, new t.p = 1, new t.p() = a, a[b] = x, a[b[c[d[e]]]] = \u8888(0,1,), () => import(a).x = x, super(a,b,...c) = \u4444]`
-	// expected := ExprRootNode{}
+	// expected := ExprRootExpr{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -259,7 +259,7 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp2(t *testing.T) {
 func TestParseArrayElementList_Assignment_LeftHS_NewExp3(t *testing.T) {
 	t.Skip()
 	// src := `[, new Map() += 1, new this *= 3, new t.p &&= 1, new t.p() ||= a, a[b] /= x, a[b[c[d[e]]]] *= \u8888(0,1,), () => import(a).x &&&= x, super(a,b,...c) -= \u4444]`
-	// expected := ExprRootNode{}
+	// expected := ExprRootExpr{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,
@@ -272,7 +272,7 @@ func TestParseArrayElementList_Assignment_LeftHS_NewExp3(t *testing.T) {
 func TestParseArrayElementList_SpreadElement(t *testing.T) {
 	t.Skip()
 	// src := `[, ...new Map(), ...new this, ...new t.p, ...new t.p(), ...a[b], ...a[b[c[d[e]]]], ...() => import(a).x, ...super(a,b,...c)]`
-	// expected := ExprRootNode{}
+	// expected := ExprRootExpr{}
 	// got := Parse(src)
 	// CompareRootChildren(
 	// 	t,

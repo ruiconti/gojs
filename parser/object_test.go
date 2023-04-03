@@ -12,7 +12,7 @@ func TestObjectInitialization(t *testing.T) {
 	t.Run("empty object", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `{}`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprObject{
 					properties: []*PropertyDefinition{},
@@ -28,7 +28,7 @@ func TestObjectInitialization(t *testing.T) {
 		src := `{
 			foo: 42
 		}`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprObject{
 					properties: []*PropertyDefinition{
@@ -52,7 +52,7 @@ func TestObjectInitialization(t *testing.T) {
 			[2 + 2]: true
 		}`
 		op := l.TPlus
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprObject{
 					properties: []*PropertyDefinition{
@@ -84,7 +84,7 @@ func TestObjectInitialization(t *testing.T) {
 	t.Run("single shorthand property", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `{foo}`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				&ExprObject{
 					properties: []*PropertyDefinition{
@@ -106,7 +106,7 @@ func TestObjectInitialization(t *testing.T) {
 	t.Run("spread operator", func(t *testing.T) {
 		logger := internal.NewSimpleLogger(internal.ModeDebug)
 		src := `{...foo, ...bar, baz, [foo > 'bar']: {...bar}}`
-		exp := &ExprRootNode{
+		exp := &NodeRoot{
 			children: []Node{
 				// write the expected AST here all at once
 				&ExprObject{
