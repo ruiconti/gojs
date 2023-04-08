@@ -51,36 +51,6 @@ func (e *ExprObject) S() string {
 	return src.String()
 }
 
-// ///////////////
-// ExprFunction //
-// ///////////////
-const EFunction ExprType = "EFunction"
-
-type ExprFunction struct {
-	params []Expr
-	body   Expr
-
-	expression bool
-	async      bool
-}
-
-func (e *ExprFunction) Type() ExprType {
-	return EFunction
-}
-
-func (e *ExprFunction) S() string {
-	src := strings.Builder{}
-	src.Write([]byte("(lambda "))
-	for i, prop := range e.params {
-		src.Write([]byte(prop.S()))
-		if i < len(e.params)-1 {
-			src.Write([]byte(" "))
-		}
-	}
-	src.Write([]byte(")"))
-	return src.String()
-}
-
 // ObjectLiteral :
 // '{' '}'
 // '{' PropertyDefinitionList ','? '}'

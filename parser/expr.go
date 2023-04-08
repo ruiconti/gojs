@@ -31,9 +31,9 @@ func (e *ExprIdentifier) S() string {
 	return e.name
 }
 
-// /////////////////
+// ////////////////////////
 // ExprPrivateIdentifier //
-// /////////////////
+// ////////////////////////
 const EPrivateIdentifierReference ExprType = "EPrivateIdentifierReference"
 
 type ExprPrivateIdentifier struct {
@@ -234,9 +234,9 @@ func (e *ExprMetaProperty) S() string {
 	return fmt.Sprintf("(getmeta %s %s)", e.meta.S(), e.property.S())
 }
 
-// ///////////////////
+// ///////////
 // ExprCall //
-// ///////////////////
+// ///////////
 const ECall ExprType = "ExprCall"
 
 type ExprCall struct {
@@ -260,18 +260,16 @@ func (e *ExprCall) S() string {
 			args.WriteString(" ")
 		}
 	}
-	var sarg string
+	callee := e.callee.S()
 	if e.optional {
-		sarg = "λ?"
-	} else {
-		sarg = "λ"
+		callee += "?"
 	}
-	return fmt.Sprintf("(%s%s %s)", sarg, e.callee.S(), args.String())
+	return fmt.Sprintf("(%s %s)", callee, args.String())
 }
 
-// ///////////////////
+// ////////////////
 // SpreadElement //
-// ///////////////////
+// ////////////////
 const NSpreadElement ExprType = "SpreadElement"
 
 type SpreadElement struct {
@@ -289,9 +287,9 @@ func (e *SpreadElement) S() string {
 	return fmt.Sprintf("(... %s)", e.argument.S())
 }
 
-// ///////////////////
+// /////////////////
 // ExprImportCall //
-// ///////////////////
+// /////////////////
 const EImportCall ExprType = "ExprImportCall"
 
 type ExprImportCall struct {
@@ -331,6 +329,46 @@ func (e *ExprAssign) S() string {
 	return fmt.Sprintf("(%s %s <- %s)", e.operator.Type.S(), e.left.S(), e.right.S())
 }
 
+// ///////////////
+// ExprFunction //
+// ///////////////
+// TODO: too similar to FunctionDeclaration; refactor
+const EFunction ExprType = "ExprFunction"
+
+type ExprFunction struct {
+	BindingIdentifier *ExprIdentifier
+	Params            []Node
+	Body              []Stmt
+}
+
+func (e *ExprFunction) Type() ExprType {
+	return EImportCall
+}
+
+func (e *ExprFunction) S() string {
+	stmts := strings.Builder{}
+	for i, stmt := range e.Body {
+		stmts.WriteString(stmt.S())
+		if i < len(e.Body)-1 {
+			stmts.WriteString(" ")
+		}
+	}
+
+	params := strings.Builder{}
+	for i, param := range e.Params {
+		params.WriteString(param.S())
+		if i < len(e.Params)-1 {
+			params.WriteString(" ")
+		}
+	}
+
+	if e.BindingIdentifier == nil {
+		return fmt.Sprintf("(λ (%s) %s)", stmts.String(), params.String())
+	} else {
+		return fmt.Sprintf("(λ %s (%s) %s)", e.BindingIdentifier.S(), stmts.String(), params.String())
+	}
+}
+
 // //////////////////////////
 // Expressions productions //
 // //////////////////////////
@@ -340,9 +378,9 @@ func (p *Parser) parseExpr() (Expr, error) {
 
 // AssignmentExpression :
 // | ConditionalExpression
-// | [+Yield] YieldExpression
-// | ArrowFunction
-// | AsyncArrowFunction
+// | [+Yield] YieldExpression (TODO)
+// | ArrowFunction (TODO)
+// | AsyncArrowFunction (TODO)
 // | LeftHandSideExpression '=' AssignmentExpression
 // | LeftHandSideExpression AssignmentOperator AssignmentExpression
 // | LeftHandSideExpression &&= AssignmentExpression
@@ -420,6 +458,17 @@ func (p *Parser) parseAssignExpr() (Expr, error) {
 
 	return nil, fmt.Errorf("rejected on AssignExpr: %s", err.Error())
 }
+
+// ArrowFunction[In, Yield, Await] :
+// | ArrowParameters[?Yield, ?Await] [no LineTerminator here] => ConciseBody[?In]
+// ArrowParameters[Yield, Await] :
+// | BindingIdentifier[?Yield, ?Await]
+// | CoverParenthesizedExpressionAndArrowParameterList[?Yield, ?Await]
+// ConciseBody[In] :
+// | [lookahead ≠ {] ExpressionBody[?In, ~Await]
+// | '{' FunctionBody[~Yield, ~Await] '}'
+// ExpressionBody[In, Await] :
+// AssignmentExpression[?In, ~Yield, ?Await]
 
 func (p *Parser) parseCondExpr() (Expr, error) {
 	return p.parseLogOrExpr()
@@ -1174,8 +1223,8 @@ loop:
 // | IdentifierReference
 // | Literal
 // | ArrayLiteral
-// | ObjectLiteral (TODO)
-// | FunctionExpression (TODO)
+// | ObjectLiteral
+// | FunctionExpression
 // | ClassExpression (TODO)
 // | GeneratorExpression (TODO)
 // | AsyncFunctionExpression (TODO)
@@ -1184,28 +1233,46 @@ loop:
 // | TemplateLiteral (TODO)
 // | CoverParenthesizedExpressionAndArrowParameterList (TODO)
 func (p *Parser) parsePrimaryExpr() (Expr, error) {
+	var err error
 	p.Log("parsePrimaryExpr")
 	cp := p.saveCheckpoint()
-	literal, err := p.parseLiteralAndIdentifier()
-	if err == nil {
+	if literal, err := p.parseLiteralAndIdentifier(); err == nil {
 		return literal, nil
 	}
-
 	p.restoreCheckpoint(cp)
+
 	cp = p.saveCheckpoint()
-	array, err := p.parseArrayInitializer()
-	if err == nil {
+	if array, err := p.parseArrayInitializer(); err == nil {
 		return array, nil
 	}
 	p.restoreCheckpoint(cp)
 
 	cp = p.saveCheckpoint()
-	object, err := p.parseObjectInitializer()
-	if err == nil {
+	if object, err := p.parseObjectInitializer(); err == nil {
 		return object, nil
 	}
 	p.restoreCheckpoint(cp)
-	return nil, fmt.Errorf("rejected on primaryExpression")
+
+	cp = p.saveCheckpoint()
+	if fn, err := p.parseFunctionExpression(); err == nil {
+		return fn, nil
+	}
+	p.restoreCheckpoint(cp)
+
+	return nil, fmt.Errorf("rejected on primaryExpression: %v", err)
+}
+
+func (p *Parser) parseFunctionExpression() (Expr, error) {
+	if fnDecl, err := p.parseFunctionDeclaration(); err != nil {
+		return nil, err
+	} else {
+		fn := fnDecl.(*FunctionDeclarationStmt)
+		return &ExprFunction{
+			Body:              fn.Body,
+			BindingIdentifier: fn.BindingIdentifier,
+			Params:            fn.Params,
+		}, nil
+	}
 }
 
 func (p *Parser) parseLiteralAndIdentifier() (Expr, error) {
