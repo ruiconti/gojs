@@ -938,7 +938,75 @@ func TestCallExpression(t *testing.T) {
 		got := Parse(logger, src)
 		AssertExprEqual(t, logger, got, exp)
 	})
+}
 
+func TestAssignmentExpression(t *testing.T) {
+	t.Run("simple assignment", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `a = b`
+		exp := &NodeRoot{
+			children: []Node{
+				&ExprAssign{
+					left:     idExpr("a"),
+					right:    idExpr("b"),
+					operator: assignt.Token(),
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("multiple assignments", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `a = b = c = d = e = 20`
+		exp := &NodeRoot{
+			children: []Node{
+				&ExprAssign{
+					operator: assignt.Token(),
+					left:     idExpr("a"),
+					right: &ExprAssign{
+						operator: assignt.Token(),
+						left:     idExpr("b"),
+						right: &ExprAssign{
+							operator: assignt.Token(),
+							left:     idExpr("c"),
+							right: &ExprAssign{
+								operator: assignt.Token(),
+								left:     idExpr("d"),
+								right: &ExprAssign{
+									operator: assignt.Token(),
+									left:     idExpr("e"),
+									right:    intExpr(20),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		got := Parse(logger, src)
+		AssertExprEqual(t, logger, got, exp)
+	})
+
+	t.Run("all operators", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		for _, op := range assignmentOperators {
+			src := fmt.Sprintf(`a %s b`, op.S())
+			exp := &NodeRoot{
+				children: []Node{
+					&ExprAssign{
+						left:     idExpr("a"),
+						right:    idExpr("b"),
+						operator: op.Token(),
+					},
+				},
+			}
+			got := Parse(logger, src)
+			AssertExprEqual(t, logger, got, exp)
+		}
+	})
 }
 
 // //////////

@@ -34,11 +34,11 @@ func (p *Parser) parseStatement() (Stmt, error) {
 	var stmt Stmt
 	var err error
 
-	p.saveCheckpoint()
+	cp := p.saveCheckpoint()
 	switch token.Type {
 	// todo: resolve conflict with object initialization
-	// case l.TLeftBrace:
-	// 	stmt, err = p.parseBlockStatement()
+	case l.TLeftBrace:
+		stmt, err = p.parseBlockStatement()
 	case l.TVar, l.TConst, l.TLet:
 		stmt, err = p.parseVariableStatement()
 	case l.TSemicolon:
@@ -48,7 +48,7 @@ func (p *Parser) parseStatement() (Stmt, error) {
 	}
 
 	if err != nil || stmt == nil {
-		p.restoreCheckpoint()
+		p.restoreCheckpoint(cp)
 		return p.parseExpressionStatement()
 	}
 	return stmt, err
@@ -75,8 +75,8 @@ func (p *Parser) parseEmptyStatement() (*EmptyStatement, error) {
 // 'if' '(' Expression[+In, ?Yield, ?Await] ')' Statement[?Yield, ?Await, ?Return] [lookahead ≠ else]
 type IfStatement struct {
 	Condition Expr
-	ElseStmt  Stmt
 	ThenStmt  Stmt
+	ElseStmt  Stmt
 }
 
 func (s *IfStatement) Type() StmtType {
@@ -84,7 +84,11 @@ func (s *IfStatement) Type() StmtType {
 }
 
 func (s *IfStatement) S() string {
-	return fmt.Sprintf("(if %s %s %s)", s.Condition.S(), s.ThenStmt.S(), s.ElseStmt.S())
+	if s.ElseStmt == nil {
+		return fmt.Sprintf("(if %s %s)", s.Condition.S(), s.ThenStmt.S())
+	} else {
+		return fmt.Sprintf("(if %s %s %s)", s.Condition.S(), s.ThenStmt.S(), s.ElseStmt.S())
+	}
 }
 
 func (p *Parser) parseIfStatement() (*IfStatement, error) {
@@ -271,7 +275,6 @@ func (p *Parser) parseExpressionStatement() (*ExpressionStatement, error) {
 // VariableDeclaration[In, Yield, Await] :
 // | BindingIdentifier[?Yield, ?Await] Initializer[?In, ?Yield, ?Await]opt
 // | BindingPattern[?Yield, ?Await] Initializer[?In, ?Yield, ?Await]
-
 type VariableDeclaration struct {
 	identifier *ExprIdentifier // todo: more accurate naming
 	init       Expr

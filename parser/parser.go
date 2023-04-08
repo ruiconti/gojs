@@ -130,14 +130,15 @@ func (p *Parser) guardInfiniteLoop(lastCursor *uint32) {
 	}
 }
 
-func (p *Parser) saveCheckpoint() {
-	p.checkpoints = append(p.checkpoints, p.cursor)
+func (p *Parser) saveCheckpoint() uint32 {
+	return p.cursor
 }
 
-func (p *Parser) restoreCheckpoint() {
-	lastIdx := len(p.checkpoints) - 1
-	p.cursor = p.checkpoints[lastIdx]
-	p.checkpoints = p.checkpoints[:lastIdx]
+func (p *Parser) restoreCheckpoint(cursor uint32) {
+	if cursor > p.seqEnd {
+		panic("invalid checkpoint: out-of-bounds")
+	}
+	p.cursor = cursor
 }
 
 func Parse(logger *internal.SimpleLogger, src string) Node {

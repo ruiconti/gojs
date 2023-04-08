@@ -309,6 +309,28 @@ func (e *ExprImportCall) S() string {
 	return fmt.Sprintf("(import %s)", e.source.S())
 }
 
+// /////////////
+// ExprAssign //
+// /////////////
+const EAssign ExprType = "ExprAssign"
+
+type ExprAssign struct {
+	operator l.Token
+	left     Node
+	right    Node
+}
+
+func (e *ExprAssign) Type() ExprType {
+	return EImportCall
+}
+
+func (e *ExprAssign) S() string {
+	if e == nil {
+		panic("invalid object: nil")
+	}
+	return fmt.Sprintf("(%s %s <- %s)", e.operator.Type.S(), e.left.S(), e.right.S())
+}
+
 // //////////////////////////
 // Expressions productions //
 // //////////////////////////
@@ -326,8 +348,77 @@ func (p *Parser) parseExpr() (Expr, error) {
 // | LeftHandSideExpression &&= AssignmentExpression
 // | LeftHandSideExpression ||= AssignmentExpression
 // | LeftHandSideExpression ??= AssignmentExpression
+var assignmentOperators = []l.TokenType{
+	l.TAssign,
+	l.TPlusAssign,
+	l.TMinusAssign,
+	l.TSlashAssign,
+	l.TStarAssign,
+	l.TPercentAssign,
+	l.TAndAssign,
+	l.TOrAssign,
+	l.TLogicalAndAssign,
+	l.TLogicalOrAssign,
+	l.TXorAssign,
+	l.TLeftShiftAssign,
+	l.TRightShiftAssign,
+	l.TUnsignedRightShiftAssign,
+}
+
+func (p *Parser) consumeAssignOp() (*l.Token, error) {
+	cur := p.Peek()
+	found := false
+	for _, op := range assignmentOperators {
+		if cur.Type == op {
+			p.Next()
+			found = true
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("did not find a valid assignment operator")
+	}
+	return &cur, nil
+}
+
 func (p *Parser) parseAssignExpr() (Expr, error) {
-	return p.parseCondExpr()
+	var err error
+
+	cp := p.saveCheckpoint()
+	// AssignmentExpression : LeftHandSideExpression '=' AssignmentExpression
+	parseLhs := func() (Node, error) {
+		lhs, err := p.parseLeftHandSideExpr()
+		if err != nil {
+			return nil, err
+		}
+
+		assignOp, err := p.consumeAssignOp()
+		if err != nil {
+			return nil, err
+		}
+
+		rhs, err := p.parseAssignExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &ExprAssign{
+			left:     lhs,
+			right:    rhs,
+			operator: *assignOp,
+		}, nil
+	}
+	if assignExpr, err := parseLhs(); err == nil {
+		return assignExpr, nil
+	}
+
+	p.restoreCheckpoint(cp)
+	// AssignmentExpression : ConditionalExpression
+	exprCond, err := p.parseCondExpr()
+	if err == nil {
+		return exprCond, nil
+	}
+
+	return nil, fmt.Errorf("rejected on AssignExpr: %s", err.Error())
 }
 
 func (p *Parser) parseCondExpr() (Expr, error) {
@@ -533,6 +624,9 @@ func (p *Parser) parseUnaryOperator() (Expr, error) {
 		p.guardInfiniteLoop(&lastCursor)
 	}
 
+	if err != nil {
+		return nil, err
+	}
 	return exprUnary, nil
 }
 
@@ -599,25 +693,26 @@ func (p *Parser) parseUpdateExpr() (Expr, error) {
 // LeftHandSideExpression ::=
 // NewExpression
 // | CallExpression
-// | OptionalExpression
+// | OptionalExpression (embedded)
 func (p *Parser) parseLeftHandSideExpr() (Expr, error) {
 	p.Log("parseLeftHandSideExpr")
 	var (
+		cp   uint32
 		expr Expr
 		err  error
 	)
 
-	p.saveCheckpoint()
+	cp = p.saveCheckpoint()
 	if expr, err = p.parseCallExpr(); err == nil {
 		return expr, nil
 	}
-	p.restoreCheckpoint()
+	p.restoreCheckpoint(cp)
 
-	p.saveCheckpoint()
+	cp = p.saveCheckpoint()
 	if expr, err = p.parseNewExpr(); err == nil {
 		return expr, nil
 	}
-	p.restoreCheckpoint()
+	p.restoreCheckpoint(cp)
 
 	return nil, fmt.Errorf("parseLeftHandSideExpr rejected")
 }
@@ -703,6 +798,7 @@ func (p *Parser) parseArguments() ([]Expr, error) {
 		err       error
 		arguments []Expr
 	)
+
 	// simplifying the expression to:
 	// Arguments ::= '(' ArgumentList? ')' ExpressionRest
 	//
@@ -1089,26 +1185,26 @@ loop:
 // | CoverParenthesizedExpressionAndArrowParameterList (TODO)
 func (p *Parser) parsePrimaryExpr() (Expr, error) {
 	p.Log("parsePrimaryExpr")
-	p.saveCheckpoint()
+	cp := p.saveCheckpoint()
 	literal, err := p.parseLiteralAndIdentifier()
 	if err == nil {
 		return literal, nil
 	}
 
-	p.restoreCheckpoint()
-	p.saveCheckpoint()
+	p.restoreCheckpoint(cp)
+	cp = p.saveCheckpoint()
 	array, err := p.parseArrayInitializer()
 	if err == nil {
 		return array, nil
 	}
-	p.restoreCheckpoint()
+	p.restoreCheckpoint(cp)
 
-	p.saveCheckpoint()
+	cp = p.saveCheckpoint()
 	object, err := p.parseObjectInitializer()
 	if err == nil {
 		return object, nil
 	}
-	p.restoreCheckpoint()
+	p.restoreCheckpoint(cp)
 	return nil, fmt.Errorf("rejected on primaryExpression")
 }
 

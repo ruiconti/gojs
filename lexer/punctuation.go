@@ -63,14 +63,26 @@ func (s *Lexer) matchPunctuation(char rune) (TokenType, uint) {
 		return TComma, 1
 	case ':':
 		return TColon, 1
-	case '^':
-		return TXor, 1
 	case '~':
 		return TTilde, 1
-	case '%':
-		return TPercent, 1
 	case '#':
 		return TNumberSign, 1
+	case '^':
+		if s.MatchSequence('=') {
+			// ^= is modulo XOR
+			return TXorAssign, 2
+		} else {
+			// ^ is XOR
+			return TXor, 1
+		}
+	case '%':
+		if s.MatchSequence('=') {
+			// %= is modulo assign
+			return TPercentAssign, 2
+		} else {
+			// % is modulo
+			return TPercent, 1
+		}
 	case '>':
 		if s.MatchSequence('>', '>', '=') {
 			// >>>= is unsigned right shift assign
