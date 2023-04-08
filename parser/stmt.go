@@ -20,15 +20,15 @@ type Stmt interface {
 // | EmptyStatement
 // | ExpressionStatement[?Yield, ?Await]
 // | IfStatement[?Yield, ?Await, ?Return]
-// | BreakableStatement[?Yield, ?Await, ?Return]
-// | ContinueStatement[?Yield, ?Await]
-// | BreakStatement[?Yield, ?Await]
-// | [+Return] ReturnStatement[?Yield, ?Await]
-// | WithStatement[?Yield, ?Await, ?Return]
-// | LabelledStatement[?Yield, ?Await, ?Return]
-// | ThrowStatement[?Yield, ?Await]
-// | TryStatement[?Yield, ?Await, ?Return]
-// | DebuggerStatement
+// | BreakableStatement[?Yield, ?Await, ?Return] (TODO)
+// | ContinueStatement[?Yield, ?Await] (TODO)
+// | BreakStatement[?Yield, ?Await] (TODO)
+// | [+Return] ReturnStatement[?Yield, ?Await] (TODO)
+// | WithStatement[?Yield, ?Await, ?Return] (TODO)
+// | LabelledStatement[?Yield, ?Await, ?Return] (TODO)
+// | ThrowStatement[?Yield, ?Await] (TODO)
+// | TryStatement[?Yield, ?Await, ?Return] (TODO)
+// | DebuggerStatement (TODO)
 func (p *Parser) parseStatement() (Stmt, error) {
 	token := p.Peek()
 	var stmt Stmt
@@ -45,6 +45,10 @@ func (p *Parser) parseStatement() (Stmt, error) {
 		stmt, err = p.parseEmptyStatement()
 	case l.TIf:
 		stmt, err = p.parseIfStatement()
+	case l.TReturn:
+		stmt, err = p.parseReturnStatement()
+	case l.TFunction:
+		stmt, err = p.parseFunctionDeclaration()
 	}
 
 	if err != nil || stmt == nil {
@@ -68,6 +72,41 @@ func (p *Parser) parseEmptyStatement() (*EmptyStatement, error) {
 	}
 	p.Next() // Consume the ';' token
 	return &EmptyStatement{}, nil
+}
+
+// ReturnStatement
+const SReturn StmtType = "SReturn"
+
+type ReturnStatement struct {
+	expr Expr
+}
+
+func (s *ReturnStatement) Type() StmtType { return SReturn }
+func (s *ReturnStatement) S() string {
+	var ret string
+	if s.expr == nil {
+		ret = "undefined"
+	} else {
+		ret = s.expr.S()
+	}
+	return fmt.Sprintf("(return %s)", ret)
+}
+
+func (p *Parser) parseReturnStatement() (*ReturnStatement, error) {
+	if p.Peek().Type != l.TReturn {
+		return nil, fmt.Errorf("expected 'return', got %v", p.Peek().Type)
+	}
+
+	var returnStmt ReturnStatement
+	p.Next() // consume 'return'
+	if expr, err := p.parseExpr(); err == nil {
+		returnStmt.expr = expr
+	}
+
+	if p.Peek().Type == l.TSemicolon {
+		p.Next() // consume ';'
+	}
+	return &returnStmt, nil
 }
 
 // IfStatement[Yield, Await, Return] :
@@ -153,6 +192,10 @@ func (s *BlockStatement) S() string {
 	return src.String()
 }
 func (p *Parser) parseBlockStatement() (Stmt, error) {
+	if p.Peek().Type != l.TLeftBrace {
+		return nil, fmt.Errorf("expected '{', got %v", p.Peek().Lexeme)
+	}
+
 	p.Next() // Consume the '{' token
 	var stmtList []Stmt
 	for p.Peek().Type != l.TRightBrace {
@@ -250,6 +293,131 @@ func (p *Parser) parseExpressionStatement() (*ExpressionStatement, error) {
 // | GeneratorDeclaration[?Yield, ?Await, ?Default]
 // | AsyncFunctionDeclaration[?Yield, ?Await, ?Default]
 // | AsyncGeneratorDeclaration[?Yield, ?Await, ?Default]
+// func (p *Parser) parseHoistableDeclaration() (Node, error) {
+
+// FunctionDeclaration : 'default'? 'function' BindingIdentifier? '(' FormalParameters ')' '{' FunctionBody '}'
+//
+// FunctionExpression : 'function' BindingIdentifier? '(' FormalParameters ')' '{' FunctionBody '}'
+//
+// FunctionBody : FunctionStatementList
+//
+// FunctionStatementList : StatementList
+type FunctionDeclarationStmt struct {
+	BindingIdentifier *ExprIdentifier
+	Params            []Node
+	Body              []Stmt
+}
+
+func (s *FunctionDeclarationStmt) Type() StmtType {
+	return SStmt
+}
+
+func (s *FunctionDeclarationStmt) S() string {
+	stmts := strings.Builder{}
+	for i, stmt := range s.Body {
+		stmts.WriteString(stmt.S())
+		if i < len(s.Body)-1 {
+			stmts.WriteString(" ")
+		}
+	}
+
+	params := strings.Builder{}
+	for i, param := range s.Params {
+		params.WriteString(param.S())
+		if i < len(s.Params)-1 {
+			params.WriteString(" ")
+		}
+	}
+
+	if s.BindingIdentifier == nil {
+		return fmt.Sprintf("(fn (%s) %s)", stmts.String(), params.String())
+	} else {
+		return fmt.Sprintf("(fn %s (%s) %s)", s.BindingIdentifier.S(), stmts.String(), params.String())
+	}
+}
+
+func (p *Parser) parseFunctionDeclaration() (Node, error) {
+	if p.Peek().Type != l.TFunction {
+		return nil, fmt.Errorf("expected function, got %s", p.Peek().Lexeme)
+	}
+	p.Next() // consume 'function'
+
+	var bindingIdentifier *ExprIdentifier
+	switch cur := p.Peek().Type; cur {
+	case l.TIdentifier:
+		bindingIdentifier = &ExprIdentifier{p.Peek().Lexeme}
+		p.Next() // consume identifier
+		if p.Peek().Type != l.TLeftParen {
+			return nil, fmt.Errorf("expected left paren, got %s", p.Peek().Lexeme)
+		}
+		p.Next() // consume '('
+	case l.TLeftParen:
+		bindingIdentifier = nil
+		p.Next() // consume '('
+	default:
+		return nil, fmt.Errorf("expected identifier or left paren, got %s", cur.S())
+	}
+
+	params := []Node{}
+loop:
+	for {
+		// parse current parameter
+		switch curParam := p.Peek(); curParam.Type {
+		case l.TRightParen:
+			p.Next() // consume ')'
+			break loop
+		case l.TIdentifier:
+			p.Next() // consume identifier
+			params = append(params, &ExprIdentifier{curParam.Lexeme})
+		case l.TLeftBrace, l.TLeftBracket:
+			if pattern, err := p.parseBindingPattern(); err != nil {
+				return nil, err
+			} else {
+				params = append(params, pattern)
+			}
+		case l.TEllipsis:
+			p.Next() // consume '...'
+			spreadExpr := &SpreadElement{}
+			switch restParam := p.Peek().Type; restParam {
+			case l.TIdentifier:
+				spreadExpr.argument = &ExprIdentifier{curParam.Lexeme}
+			case l.TLeftBrace, l.TLeftBracket:
+				if pattern, err := p.parseBindingPattern(); err != nil {
+					return nil, err
+				} else {
+					spreadExpr.argument = pattern
+				}
+			default:
+				return nil, fmt.Errorf("invalid rest parameter, got %s", restParam.S())
+			}
+			params = append(params, spreadExpr)
+		default:
+			return nil, fmt.Errorf("invalid formal params (id or pattern), got %s", curParam.Lexeme)
+		}
+
+		// parse continuator
+		switch curToken := p.Peek(); curToken.Type {
+		case l.TComma:
+			p.Next() // consume ','
+		case l.TRightParen:
+			p.Next() // consume ')'
+			break loop
+		default:
+			return nil, fmt.Errorf("expected comma or right paren, got %s", curToken.Lexeme)
+		}
+	}
+
+	// var blockStmt *BlockStatement
+	if blockStmt, err := p.parseBlockStatement(); err != nil {
+		return nil, err
+	} else {
+		return &FunctionDeclarationStmt{
+			Body:              blockStmt.(*BlockStatement).Stmts,
+			Params:            params,
+			BindingIdentifier: bindingIdentifier,
+		}, nil
+	}
+}
 
 // LexicalDeclaration[In, Yield, Await] :
 // | ('let' | 'const') BindingList ';'

@@ -200,8 +200,6 @@ func TestParseIfStatement(t *testing.T) {
 		src := `if (x > 10) { a = b; }`
 
 		tassign := l.TAssign
-		// tlet := l.TLet
-
 		exp := &NodeRoot{
 			children: []Node{
 				&IfStatement{
@@ -222,6 +220,106 @@ func TestParseIfStatement(t *testing.T) {
 			},
 		}
 
+		got := Parse(logger, src)
+		AssertStmtEqual(t, logger, got, exp)
+	})
+}
+
+func TestFunctionDeclaration(t *testing.T) {
+	t.Run("regular function declaration", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `function testFunction(a, b) {
+			return a + b;
+		}`
+		exp := &NodeRoot{
+			children: []Node{
+				&FunctionDeclarationStmt{
+					BindingIdentifier: idExpr("testFunction"),
+					Params: []Node{
+						idExpr("a"),
+						idExpr("b"),
+					},
+					Body: []Stmt{
+						&ReturnStatement{
+							expr: binExpr(idExpr("a"), idExpr("b"), l.TPlus),
+						},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertStmtEqual(t, logger, got, exp)
+	})
+
+	t.Run("function expression with patterns", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `let fn = function({a, b:c}, [d], ...{e}) {
+			return e + d;
+		}`
+		tlet := l.TLet
+		exp := &NodeRoot{
+			children: []Node{
+				&VariableStatement{
+					kind: tlet.Token(),
+					declarations: []*VariableDeclaration{
+						{
+							identifier: idExpr("fn"),
+							pattern:    nil,
+							init: &ExprFunction{
+								BindingIdentifier: nil,
+								Params: []Node{
+									&ExprObject{
+										properties: []*PropertyDefinition{
+											{key: idExpr("a"), value: idExpr("a"), shorthand: true},
+											{key: idExpr("b"), value: idExpr("c")},
+										},
+									},
+									&ExprArray{[]Expr{idExpr("d")}},
+									&SpreadElement{&ExprObject{
+										properties: []*PropertyDefinition{
+											{key: idExpr("e"), value: idExpr("e"), shorthand: true},
+										},
+									}},
+								},
+								Body: []Stmt{
+									&ReturnStatement{binExpr(idExpr("e"), idExpr("d"), l.TPlus)},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		got := Parse(logger, src)
+		AssertStmtEqual(t, logger, got, exp)
+	})
+
+	t.Run("simple function expression", func(t *testing.T) {
+		logger := internal.NewSimpleLogger(internal.ModeDebug)
+		src := `const fn = function() {
+			return a;
+		}`
+		tconst := l.TConst
+		exp := &NodeRoot{
+			children: []Node{
+				&VariableStatement{
+					kind: tconst.Token(),
+					declarations: []*VariableDeclaration{
+						{
+							identifier: idExpr("fn"),
+							pattern:    nil,
+							init: &ExprFunction{
+								BindingIdentifier: nil,
+								Params:            []Node{},
+								Body: []Stmt{
+									&ReturnStatement{idExpr("a")},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
 		got := Parse(logger, src)
 		AssertStmtEqual(t, logger, got, exp)
 	})
