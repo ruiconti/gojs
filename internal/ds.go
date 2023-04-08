@@ -19,3 +19,13 @@ func MapInvert[K comparable, V comparable](m map[K]V) map[V]K {
 	}
 	return inv
 }
+
+// Find returns the first occurrence of x in s, or -1 if x is not present in s.
+func Find[T comparable](s []T, x T, compare func(T /* arrayElem */, T /* target */) bool) *T {
+	for i, v := range s {
+		if compare(v, x) {
+			return &s[i]
+		}
+	}
+	return nil
+}
